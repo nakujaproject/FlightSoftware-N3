@@ -19,6 +19,7 @@
 
 /* timing constant */
 #define SETUP_DELAY 300
+#define TASK_DELAY 10
 
 /* flight constants */
 #define EJECTION_HEIGHT 1000 // eject at 1000m AGL
@@ -26,6 +27,7 @@
 
 
 /* tasks constants */
-#define STACK_SIZE 1024
+#define STACK_SIZE 512
+#define ALTIMETER_QUEUE_LENGTH 1 // todo: change to 2 items
 
 #endif

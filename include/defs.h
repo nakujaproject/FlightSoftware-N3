@@ -22,6 +22,10 @@
 
 /* flight constants */
 #define EJECTION_HEIGHT 1000 // eject at 1000m AGL
+#define SEA_LEVEL_PRESSURE 101325 // Assume the sea level pressure is 101325 Pascals - this can change with weather
 
+
+/* tasks constants */
+#define STACK_SIZE 1024
 
 #endif

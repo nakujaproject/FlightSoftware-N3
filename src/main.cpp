@@ -45,11 +45,12 @@ struct Acceleration_Data{
     float ax;
     float ay; 
     float az;
-} ;
+};
 
 struct Altimeter_Data{
-    float pressure;
-} ;
+    int32_t pressure;
+    float altitude;
+};
 
 /* create queue to store altimeter data
  * store pressure and altitude
@@ -63,16 +64,20 @@ void readAltimeter(void* pvParameters){
         /* Read pressure.
          * This is the pressure from the sea level.
          * */
-        Altimeter_Data alt_data;
+        struct Altimeter_Data alt_data;
+
+        /* Read pressure
+         * This is the pressure from the sea level
+         * */
         alt_data.pressure = altimeter.readSealevelPressure();
 
         /* Read altitude
          * This is the altitude from the sea level
          * */
-//        altimeter.readAltitude(SEA_LEVEL_PRESSURE);
+        alt_data.altitude = altimeter.readAltitude(SEA_LEVEL_PRESSURE);
 
         /* send data to altimeter queue */
-        if(xQueueSend(altimeter_data_queue, &alt_data, 0) != pdPASS){
+        if(xQueueSend(altimeter_data_queue, &alt_data, portMAX_DELAY) != pdPASS){
             debugln("[-]Altimeter queue full");
         }
 
@@ -81,25 +86,22 @@ void readAltimeter(void* pvParameters){
 }
 
 void readGyroscope(void* pvParameters){
+    
 
     while(true){
-        Acceleration_Data gyro_data;
-
         sensors_event_t a, g, temp;
         gyroscope.getEvent(&a, &g, &temp);
-
-        /* Read acceleration
-         * */
         
-        gyro_data.ax = a.acceleration.x;
-
-        /* Read altitude
-         * This is the altitude from the sea level
+        struct Acceleration_Data gyro_data;
+        /* 
+        * Read acceleration
          * */
-//        altimeter.readAltitude(SEA_LEVEL_PRESSURE);
+        gyro_data.ax = a.acceleration.x;
+        gyro_data.ay = a.acceleration.y;
+        gyro_data.az = a.acceleration.z;
 
         /* send data to altimeter queue */
-        if(xQueueSend(gyroscope_data_queue, &gyro_data, 0) != pdPASS){
+        if(xQueueSend(gyroscope_data_queue, &gyro_data, portMAX_DELAY) != pdPASS){
             debugln("[-]Gyro queue full");
         }
 
@@ -109,19 +111,32 @@ void readGyroscope(void* pvParameters){
 
 void displayData(void* pvParameters){
    while(true){
-       Acceleration_Data buffer;
+       struct Acceleration_Data gyroscope_buffer;
+       struct Altimeter_Data altimeter_buffer;
 
-       if(xQueueReceive(gyroscope_data_queue, &buffer, 0) == pdPASS){
-           debug("x: "); debug(buffer.ax); debugln();
-           debug("y: "); debug(buffer.ay); debugln();
-           debug("z: "); debug(buffer.az); debugln();
+       if(xQueueReceive(gyroscope_data_queue, &gyroscope_buffer, portMAX_DELAY) == pdPASS){
+           debug("x: "); debug(gyroscope_buffer.ax); debugln();
+           debug("y: "); debug(gyroscope_buffer.ay); debugln();
+           debug("z: "); debug(gyroscope_buffer.az); debugln();
+           
        }else{
            /* no queue */
        }
 
-       delay(TASK_DELAY);
+       if(xQueueReceive(altimeter_data_queue, &altimeter_buffer, portMAX_DELAY) == pdPASS){
+           debug("pressure: "); debug(altimeter_buffer.pressure); debugln();
+           debug("altitude: "); debug(altimeter_buffer.altitude); debugln();
+           
+       }else{
+           /* no queue */
+       }
+
+       delay(10);
    }
 }
+
+
+
 
 void setup()
 {
@@ -135,7 +150,9 @@ void setup()
 
     debugln("Creating queues...");
     /* create gyroscope data queue */
-    gyroscope_data_queue = xQueueCreate(GYROSCOPE_QUEUE_LENGTH, sizeof(struct Acceleration_Data *));
+    gyroscope_data_queue = xQueueCreate(GYROSCOPE_QUEUE_LENGTH, sizeof(struct Acceleration_Data));
+    /* create altimeter_data_queue */   
+    altimeter_data_queue = xQueueCreate(ALTIMETER_QUEUE_LENGTH, sizeof(struct Altimeter_Data));
 
     /* check if the queues were created successfully */
     if(gyroscope_data_queue == NULL){
@@ -143,22 +160,19 @@ void setup()
     } else{
         debugln("[+]Gyroscope data queue creation success");
     }
-
-
-    debugln("Creating tasks...");
-    /* create altimeter_data_queue */   
-    altimeter_data_queue = xQueueCreate(ALTIMETER_QUEUE_LENGTH, sizeof(struct Altimeter_Data *));
+    
     if(altimeter_data_queue == NULL){
         debugln("[+]Altimeter data queue creation failed!");
     } else{
         debugln("[+]Altimeter data queue creation success");
     }
-
+    
     /* Create tasks
      * All tasks have a stack size of 1024 words - not bytes!
      * ESP32 is 32 bit, therefore 32bits x 1024 = 4096 bytes
      * So the stack size is 4096 bytes
      * */
+    debugln("Creating tasks...");
 
     /* TASK 1: READ ALTIMETER DATA */
    if(xTaskCreate(

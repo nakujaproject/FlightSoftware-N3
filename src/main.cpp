@@ -87,7 +87,6 @@ void readAltimeter(void* pvParameters){
 
 void readGyroscope(void* pvParameters){
     
-
     while(true){
         sensors_event_t a, g, temp;
         gyroscope.getEvent(&a, &g, &temp);
@@ -115,26 +114,25 @@ void displayData(void* pvParameters){
        struct Altimeter_Data altimeter_buffer;
 
        if(xQueueReceive(gyroscope_data_queue, &gyroscope_buffer, portMAX_DELAY) == pdPASS){
-           debug("x: "); debug(gyroscope_buffer.ax); debugln();
-           debug("y: "); debug(gyroscope_buffer.ay); debugln();
-           debug("z: "); debug(gyroscope_buffer.az); debugln();
+           debug(gyroscope_buffer.ax); debugln();
+        //    debug("y: "); debug(gyroscope_buffer.ay); debugln();
+        //    debug("z: "); debug(gyroscope_buffer.az); debugln();
            
        }else{
            /* no queue */
        }
 
-       if(xQueueReceive(altimeter_data_queue, &altimeter_buffer, portMAX_DELAY) == pdPASS){
-           debug("pressure: "); debug(altimeter_buffer.pressure); debugln();
-           debug("altitude: "); debug(altimeter_buffer.altitude); debugln();
+    //    if(xQueueReceive(altimeter_data_queue, &altimeter_buffer, portMAX_DELAY) == pdPASS){
+    //        debug("pressure: "); debug(altimeter_buffer.pressure); debugln();
+    //        debug("altitude: "); debug(altimeter_buffer.altitude); debugln();
            
-       }else{
-           /* no queue */
-       }
+    //    }else{
+    //        /* no queue */
+    //    }
 
        delay(10);
    }
 }
-
 
 
 

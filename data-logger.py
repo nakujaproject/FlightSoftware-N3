@@ -1,32 +1,40 @@
 from serial import Serial
+
 from datetime import datetime
 import matplotlib.pyplot as plt
 import matplotlib.cbook as cbook
 import numpy as np
 import csv
+
 import atexit
 
 
 port = "COM4"
 baud_rate = 115200
 
+@atexit.register
 def plot_data():
+    # plot the data once the is done running
+
+    if(os.path.exists("sensor-data.csv")):
+        print("File found")
+    else:
+        print("File does not exist")
 
     # read file
-    data_file = cbook.get_sample_data("sensor-data.csv", asfileobj=False)
-    with cbook.get_sample_data("sensor-data.csv") as file:
-        arr = np.loadtxt(file, delimiter=",", unpack="True")
+    arr = np.loadtxt("sensor-data.csv", delimiter=",", unpack=True)
 
-        plt.plot(arr[0], arr[1])
-        plt.title("Unfiltered x acceleration")
-        plt.xlabel("Time (ms)")
-        plt.ylabel("X acceleration (m/s^2)")
+    plt.plot(arr[0], arr[1])
+    plt.title("Unfiltered x acceleration")
+    plt.xlabel("Time (ms)")
+    plt.ylabel("X acceleration (m/s^2)")
 
-        plt.show()
+    plt.show()
 
 
 def read_serial_data():
-    
+
+    # create Serial object
     serial_port = Serial(port, baud_rate)
 
     # csv writer object

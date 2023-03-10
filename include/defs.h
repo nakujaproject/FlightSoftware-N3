@@ -29,5 +29,6 @@
 #define STACK_SIZE 2048
 #define ALTIMETER_QUEUE_LENGTH 10 // todo: change to 2 items
 #define GYROSCOPE_QUEUE_LENGTH 10
+#define FILTERED_DATA_QUEUE_LENGTH 10
 
 #endif

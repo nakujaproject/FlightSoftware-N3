@@ -5,6 +5,7 @@
 #include <Adafruit_BMP085.h>
 #include "sensors.h"
 #include "defs.h"
+#include "kalman.h"
 
 /* create gyroscope object */
 Adafruit_MPU6050 gyroscope;
@@ -57,6 +58,7 @@ struct Altimeter_Data{
  * */
 QueueHandle_t gyroscope_data_queue;
 QueueHandle_t altimeter_data_queue;
+QueueHandle_t filtered_data_queue;
 
 void readAltimeter(void* pvParameters){
 
@@ -99,6 +101,14 @@ void readGyroscope(void* pvParameters){
         gyro_data.ay = a.acceleration.y;
         gyro_data.az = a.acceleration.z;
 
+        /* filter the data */
+        struct Filtered_Data filtered_data = filterData(gyro_data.ax);
+
+        /* send filtered value to filtered data queue */
+        if(xQueueSend(filtered_data_queue, &filtered_data, portMAX_DELAY) != pdPASS){
+            debugln("[-]Filtered data queue full");
+        }
+
         /* send data to altimeter queue */
         if(xQueueSend(gyroscope_data_queue, &gyro_data, portMAX_DELAY) != pdPASS){
             debugln("[-]Gyro queue full");
@@ -112,9 +122,11 @@ void displayData(void* pvParameters){
    while(true){
        struct Acceleration_Data gyroscope_buffer;
        struct Altimeter_Data altimeter_buffer;
+       struct Filtered_Data filtered_data;
 
        if(xQueueReceive(gyroscope_data_queue, &gyroscope_buffer, portMAX_DELAY) == pdPASS){
-           debug(gyroscope_buffer.ax); debugln();
+        //    debug(gyroscope_buffer.ax); debugln();
+           debug(filtered_data.x_acceleration); debugln();
         //    debug("y: "); debug(gyroscope_buffer.ay); debugln();
         //    debug("z: "); debug(gyroscope_buffer.az); debugln();
            
@@ -149,20 +161,29 @@ void setup()
     debugln("Creating queues...");
     /* create gyroscope data queue */
     gyroscope_data_queue = xQueueCreate(GYROSCOPE_QUEUE_LENGTH, sizeof(struct Acceleration_Data));
+
     /* create altimeter_data_queue */   
     altimeter_data_queue = xQueueCreate(ALTIMETER_QUEUE_LENGTH, sizeof(struct Altimeter_Data));
 
+    filtered_data_queue = xQueueCreate(FILTERED_DATA_QUEUE_LENGTH, sizeof(struct Filtered_Data));
+
     /* check if the queues were created successfully */
     if(gyroscope_data_queue == NULL){
-        debugln("[+]Gyroscope data queue creation failed!");
+        debugln("[-]Gyroscope data queue creation failed!");
     } else{
         debugln("[+]Gyroscope data queue creation success");
     }
     
     if(altimeter_data_queue == NULL){
-        debugln("[+]Altimeter data queue creation failed!");
+        debugln("[-]Altimeter data queue creation failed!");
     } else{
         debugln("[+]Altimeter data queue creation success");
+    }
+
+    if(filtered_data_queue == NULL){
+        debugln("[-]Filtered data queue creation failed!");
+    } else{
+        debugln("[+]Filtered data queue creation success");
     }
     
     /* Create tasks
@@ -175,7 +196,7 @@ void setup()
     /* TASK 1: READ ALTIMETER DATA */
    if(xTaskCreate(
            readAltimeter,               /* function that executes this task*/
-           "readAltimeter",/* Function name - for debugging */
+           "readAltimeter",             /* Function name - for debugging */
            STACK_SIZE,                  /* Stack depth in words */
            NULL,                        /* parameter to be passed to the task */
            tskIDLE_PRIORITY + 1,        /* Task priority - in this case 1 */

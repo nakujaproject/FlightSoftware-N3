@@ -40,7 +40,7 @@ BLA::Matrix<3, 1> x_hat = {1500.0,
 BLA::Matrix<2, 1> Y = {0.0,
                        0.0};
 
-// kalmanUpdate This filters our altitude and acceleration values
+/* This filters our altitude and acceleration values */
 struct Filtered_Data filterData(float x_acceleration){
     /* this struct will store the filtered data values */
     struct Filtered_Data filtered_values;
@@ -68,7 +68,7 @@ struct Filtered_Data filterData(float x_acceleration){
     P = (I - K * H) * P_minus;
     Y = Z - (H * x_hat_minus);
 
-    filtered_values.x_acceleration = x_hat(0);
+    filtered_values.x_acceleration = x_hat(2);
 
     // return_val.displacement = x_hat(0);
     // return_val.velocity = x_hat(1);

@@ -5,7 +5,6 @@
 #include <Adafruit_BMP085.h>
 #include "sensors.h"
 #include "defs.h"
-#include "kalman.h"
 
 /* create gyroscope object */
 Adafruit_MPU6050 gyroscope;
@@ -13,6 +12,13 @@ Adafruit_MPU6050 gyroscope;
 /* create altimeter objects */
 Adafruit_BMP085 altimeter;
 
+/* acceleration integration variables */
+long long current_time = 0;
+long long previous_time = 0;
+long velocity = 0;
+
+
+/* functions to initialize sensors */
 void initialize_gyroscope(){
     /* attempt to initialize MPU6050 */
     if(!gyroscope.begin(0x68)){
@@ -46,6 +52,7 @@ struct Acceleration_Data{
     float ax;
     float ay; 
     float az;
+    long velocity;
 };
 
 struct Altimeter_Data{
@@ -95,19 +102,21 @@ void readGyroscope(void* pvParameters){
         
         struct Acceleration_Data gyro_data;
         /* 
-        * Read acceleration
+        * Read accelerations on all axes
          * */
         gyro_data.ax = a.acceleration.x;
         gyro_data.ay = a.acceleration.y;
         gyro_data.az = a.acceleration.z;
 
-        /* filter the data */
-        struct Filtered_Data filtered_data = filterData(gyro_data.ax);
+        /* approximate velocity from acceleration by integration */
+        current_time = millis();
+        velocity = velocity + a.acceleration.y * (current_time - previous_time);
+        previous_time = current_time;
 
-        /* send filtered value to filtered data queue */
-        if(xQueueSend(filtered_data_queue, &filtered_data, portMAX_DELAY) != pdPASS){
-            debugln("[-]Filtered data queue full");
-        }
+
+
+        /* assign velocity value to gyroscope data */
+        gyro_data.velocity = velocity;
 
         /* send data to altimeter queue */
         if(xQueueSend(gyroscope_data_queue, &gyro_data, portMAX_DELAY) != pdPASS){
@@ -122,25 +131,25 @@ void displayData(void* pvParameters){
    while(true){
        struct Acceleration_Data gyroscope_buffer;
        struct Altimeter_Data altimeter_buffer;
-       struct Filtered_Data filtered_data;
 
        if(xQueueReceive(gyroscope_data_queue, &gyroscope_buffer, portMAX_DELAY) == pdPASS){
-        //    debug(gyroscope_buffer.ax); debugln();
-           debug(filtered_data.x_acceleration); debugln();
-        //    debug("y: "); debug(gyroscope_buffer.ay); debugln();
-        //    debug("z: "); debug(gyroscope_buffer.az); debugln();
-           
+           debugln("------------------------------");
+            debug("x: "); debug(gyroscope_buffer.ax); debugln();
+            debug("y: "); debug(gyroscope_buffer.ay); debugln();
+            debug("z: "); debug(gyroscope_buffer.az); debugln();
+            debug("velocity: "); debug(gyroscope_buffer.velocity); debugln();
+
        }else{
            /* no queue */
        }
 
-    //    if(xQueueReceive(altimeter_data_queue, &altimeter_buffer, portMAX_DELAY) == pdPASS){
-    //        debug("pressure: "); debug(altimeter_buffer.pressure); debugln();
-    //        debug("altitude: "); debug(altimeter_buffer.altitude); debugln();
+        if(xQueueReceive(altimeter_data_queue, &altimeter_buffer, portMAX_DELAY) == pdPASS){
+            debug("pressure: "); debug(altimeter_buffer.pressure); debugln();
+            debug("altitude: "); debug(altimeter_buffer.altitude); debugln();
            
-    //    }else{
-    //        /* no queue */
-    //    }
+        }else{
+            /* no queue */
+        }
 
        delay(10);
    }
@@ -164,8 +173,6 @@ void setup()
 
     /* create altimeter_data_queue */   
     altimeter_data_queue = xQueueCreate(ALTIMETER_QUEUE_LENGTH, sizeof(struct Altimeter_Data));
-
-    filtered_data_queue = xQueueCreate(FILTERED_DATA_QUEUE_LENGTH, sizeof(struct Filtered_Data));
 
     /* check if the queues were created successfully */
     if(gyroscope_data_queue == NULL){
@@ -204,11 +211,12 @@ void setup()
    ) != pdPASS){
     // if task creation is not successful
     debugln("[-]Read-Altimeter task creation failed!");
+
    }else{
     debugln("[+]Read-Altimeter task creation success");
    }
 
-    /* TASK 2: READ GYROSCPE DATA */
+    /* TASK 2: READ GYROSCOPE DATA */
    if(xTaskCreate(
            readGyroscope,         
            "readGyroscope",

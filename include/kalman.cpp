@@ -40,6 +40,7 @@ BLA::Matrix<3, 1> x_hat = {1500.0,
 BLA::Matrix<2, 1> Y = {0.0,
                        0.0};
 
+
 /* This filters our altitude and acceleration values */
 struct Filtered_Data filterData(float x_acceleration){
     /* this struct will store the filtered data values */

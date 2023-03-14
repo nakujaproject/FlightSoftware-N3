@@ -12,13 +12,19 @@ Adafruit_MPU6050 gyroscope;
 /* create altimeter objects */
 Adafruit_BMP085 altimeter;
 
-/* acceleration integration variables */
+/* integration variables */
 long long current_time = 0;
 long long previous_time = 0;
-long velocity = 0;
-float old_y_acceleration = 0.0;
-float new_y_acceleration = 0.0;
 
+/* velocity integration variables */
+double y_velocity = 0;
+double y_displacement = 0;
+
+float new_y_displacement = 0.0;
+float old_y_displacement = 0.0;
+double old_y_velocity = 0.0;
+double new_y_velocity = 0.0;
+double total_y_displacement = 0.0;
 
 /* functions to initialize sensors */
 void initialize_gyroscope(){
@@ -54,12 +60,14 @@ struct Acceleration_Data{
     float ax;
     float ay; 
     float az;
-    long velocity;
+
 };
 
 struct Altimeter_Data{
     int32_t pressure;
     float altitude;
+    double y_velocity;
+    double total_y_displacement;
 };
 
 /* create queue to store altimeter data
@@ -75,20 +83,39 @@ void readAltimeter(void* pvParameters){
         /* Read pressure.
          * This is the pressure from the sea level.
          * */
-        struct Altimeter_Data alt_data;
+        struct Altimeter_Data altimeter_data;
 
         /* Read pressure
          * This is the pressure from the sea level
          * */
-        alt_data.pressure = altimeter.readSealevelPressure();
+        altimeter_data.pressure = altimeter.readSealevelPressure();
 
         /* Read altitude
          * This is the altitude from the sea level
          * */
-        alt_data.altitude = altimeter.readAltitude(SEA_LEVEL_PRESSURE);
+        altimeter_data.altitude = altimeter.readAltitude(SEA_LEVEL_PRESSURE);
+
+        /*------------- APOGEE DETECTION ALGORITHM -------------------------------------*/
+
+        /* approximate velocity from acceleration by integration for apogee detection */
+        current_time = millis();
+
+        /* differentiate displacement to get velocity */
+        new_y_displacement = altimeter.readAltitude(SEA_LEVEL_PRESSURE) - ALTITUDE_OFFSET;
+        y_velocity = (new_y_displacement - old_y_displacement) / (current_time - previous_time);
+
+        /* update integration variables */
+        old_y_displacement = new_y_displacement;
+        previous_time = current_time;
+
+        /* ------------------------ END OF APOGEE DETECTION ALGORITHM ------------------------ */
+
+        /* update altimeter data */
+        altimeter_data.y_velocity = y_velocity;
+        altimeter_data.total_y_displacement = total_y_displacement;
 
         /* send data to altimeter queue */
-        if(xQueueSend(altimeter_data_queue, &alt_data, portMAX_DELAY) != pdPASS){
+        if(xQueueSend(altimeter_data_queue, &altimeter_data, portMAX_DELAY) != pdPASS){
             debugln("[-]Altimeter queue full");
         }
 
@@ -110,19 +137,7 @@ void readGyroscope(void* pvParameters){
         gyro_data.ay = a.acceleration.y;
         gyro_data.az = a.acceleration.z;
 
-        /* approximate velocity from acceleration by integration for apogee detection */
-        current_time = millis();
-        new_y_acceleration = a.acceleration.y;
-        velocity = (old_y_acceleration - new_y_acceleration)/2 * (current_time - previous_time);
-        old_y_acceleration = new_y_acceleration;
-
-        previous_time = current_time;
-        old_y_acceleration = new_y_acceleration;
-
-        /* assign velocity value to gyroscope data */
-        gyro_data.velocity = velocity;
-
-        /* send data to altimeter queue */
+        /* send data to gyroscope queue */
         if(xQueueSend(gyroscope_data_queue, &gyro_data, portMAX_DELAY) != pdPASS){
             debugln("[-]Gyro queue full");
         }
@@ -141,15 +156,16 @@ void displayData(void* pvParameters){
             debug("x: "); debug(gyroscope_buffer.ax); debugln();
             debug("y: "); debug(gyroscope_buffer.ay); debugln();
             debug("z: "); debug(gyroscope_buffer.az); debugln();
-            debug("velocity: "); debug(gyroscope_buffer.velocity); debugln();
 
        }else{
            /* no queue */
        }
 
         if(xQueueReceive(altimeter_data_queue, &altimeter_buffer, portMAX_DELAY) == pdPASS){
-            debug("pressure: "); debug(altimeter_buffer.pressure); debugln();
-            debug("altitude: "); debug(altimeter_buffer.altitude); debugln();
+            debug("Pressure: "); debug(altimeter_buffer.pressure); debugln();
+            debug("Altitude: "); debug(altimeter_buffer.altitude); debugln();
+            debug("Velocity: "); debug(altimeter_buffer.y_velocity); debugln();
+            debug("Total displacement: "); debug(altimeter_buffer.total_y_displacement); debugln();
            
         }else{
             /* no queue */

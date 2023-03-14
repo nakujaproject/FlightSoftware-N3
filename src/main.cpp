@@ -16,6 +16,8 @@ Adafruit_BMP085 altimeter;
 long long current_time = 0;
 long long previous_time = 0;
 long velocity = 0;
+float old_y_acceleration = 0.0;
+float new_y_acceleration = 0.0;
 
 
 /* functions to initialize sensors */
@@ -108,12 +110,14 @@ void readGyroscope(void* pvParameters){
         gyro_data.ay = a.acceleration.y;
         gyro_data.az = a.acceleration.z;
 
-        /* approximate velocity from acceleration by integration */
+        /* approximate velocity from acceleration by integration for apogee detection */
         current_time = millis();
-        velocity = velocity + a.acceleration.y * (current_time - previous_time);
+        new_y_acceleration = a.acceleration.y;
+        velocity = (old_y_acceleration - new_y_acceleration)/2 * (current_time - previous_time);
+        old_y_acceleration = new_y_acceleration;
+
         previous_time = current_time;
-
-
+        old_y_acceleration = new_y_acceleration;
 
         /* assign velocity value to gyroscope data */
         gyro_data.velocity = velocity;

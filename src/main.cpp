@@ -6,6 +6,12 @@
 #include "sensors.h"
 #include "defs.h"
 
+/* create WIFI Client */
+WiFiClient wifi_client;
+
+/* create MQTT publish-subscribe client */
+PubSubClient mqtt_client;
+
 /* create gyroscope object */
 Adafruit_MPU6050 gyroscope;
 
@@ -53,6 +59,13 @@ void initialize_altimeter(){
     debugln("[+]Altimeter initialized");
 }
 
+void initializeMQTTParameters(){
+    /* this functions creates an MQTT client for transmitting telemetry data */
+    client.setBufferSize(MQTT_BUFFER_SIZE);
+    client.setServer(mqtt_server, MQTT_PORT);
+
+}
+
 /* data variables */
 /* gyroscope data */
 
@@ -60,14 +73,13 @@ struct Acceleration_Data{
     float ax;
     float ay; 
     float az;
-
 };
 
 struct Altimeter_Data{
     int32_t pressure;
     float altitude;
-    double y_velocity;
-    double total_y_displacement;
+    double velocity;
+    double AGL; /* altitude above ground level */
 };
 
 /* create queue to store altimeter data
@@ -101,18 +113,21 @@ void readAltimeter(void* pvParameters){
         current_time = millis();
 
         /* differentiate displacement to get velocity */
-        new_y_displacement = altimeter.readAltitude(SEA_LEVEL_PRESSURE) - ALTITUDE_OFFSET;
+        new_y_displacement = altimeter_data.altitude - ALTITUDE_OFFSET;
         y_velocity = (new_y_displacement - old_y_displacement) / (current_time - previous_time);
 
         /* update integration variables */
-        old_y_displacement = new_y_displacement;
         previous_time = current_time;
+        old_y_displacement = new_y_displacement;
 
         /* ------------------------ END OF APOGEE DETECTION ALGORITHM ------------------------ */
 
+        /* subtract current altitude to get the maximum height reached */
+        float rocket_height = altimeter_data.altitude - ALTITUDE_OFFSET;
+
         /* update altimeter data */
-        altimeter_data.y_velocity = y_velocity;
-        altimeter_data.total_y_displacement = total_y_displacement;
+        altimeter_data.velocity = y_velocity;
+        altimeter_data.AGL = rocket_height;
 
         /* send data to altimeter queue */
         if(xQueueSend(altimeter_data_queue, &altimeter_data, portMAX_DELAY) != pdPASS){
@@ -164,8 +179,8 @@ void displayData(void* pvParameters){
         if(xQueueReceive(altimeter_data_queue, &altimeter_buffer, portMAX_DELAY) == pdPASS){
             debug("Pressure: "); debug(altimeter_buffer.pressure); debugln();
             debug("Altitude: "); debug(altimeter_buffer.altitude); debugln();
-            debug("Velocity: "); debug(altimeter_buffer.y_velocity); debugln();
-            debug("Total displacement: "); debug(altimeter_buffer.total_y_displacement); debugln();
+            debug("Velocity: "); debug(altimeter_buffer.velocity); debugln();
+            debug("AGL: "); debug(altimeter_buffer.AGL); debugln();
            
         }else{
             /* no queue */
@@ -175,7 +190,60 @@ void displayData(void* pvParameters){
    }
 }
 
+void publishMQTTMessage(struct Altimeter_Data altimeter_data, struct Acceleration_Data acceleration_data){
+    /* This function creates the message to be sent to the ground station over MQTT*/
+    char telemetry_data[300];
 
+    /* build telemetry string message
+     * The data to be sent is:
+     *
+     * y-axis acceleration
+     * Velocity
+     * Altitude above ground level (AGL)
+     * Pressure
+     *
+     * */
+    sprintf(telemetry_data,
+            "%.3f, %.3f, %.3f, %.3f\n",
+            acceleration_data.ay,
+            altimeter_data.velocity,
+            altimeter_data.AGL,
+            altimeter_data.pressure
+            );
+
+    /* publish the data to N3/TelemetryData MQTT channel */
+    client.publish("N3/TelemetryData", "Y-Acceleration, Velocity, Altitude, Pressure");
+    client.publish("N3/TelemetryData", telemetry_data);
+
+}
+
+void transmitTelemetry(void* pvParameters){
+    /* This function sends data to the ground station */
+    while(true){
+        /*  create two pointers to the data structures to be transmitted */
+        struct Acceleration_Data gyroscope_buffer;
+        struct Altimeter_Data altimeter_buffer;
+
+        /* receive data into respective queues */
+        if( (xQueueReceive(gyroscope_data_queue, &gyroscope_buffer, portMAX_DELAY) == pdPASS) || (xQueueReceive(altimeter_data_queue, &altimeter_buffer, portMAX_DELAY) == pdPASS) ){
+            /* this means all the data has been received successfully into any one of the queues and is ready for transmission
+             *
+             * todo: change this AND operator. the danger is that if one queue is not able to receive, we will not receive any data
+             *
+             * */
+
+            /* publish the data to ground */
+            publishMQTTMessage(altimeter_buffer, gyroscope_buffer);
+
+
+        }else{
+
+
+        }
+
+
+    }
+}
 
 void setup()
 {
@@ -187,7 +255,10 @@ void setup()
     initialize_altimeter();
     // todo: initialize flash memory
 
+    initializeMQTTParameters();
+
     debugln("Creating queues...");
+
     /* create gyroscope data queue */
     gyroscope_data_queue = xQueueCreate(GYROSCOPE_QUEUE_LENGTH, sizeof(struct Acceleration_Data));
 
@@ -262,6 +333,20 @@ void setup()
     debugln("[-]Display data task creation failed!");
     }else{
     debugln("[+]Display data task creation success!");
+    }
+
+    /* TASK 4: TRANSMIT TELEMETRY DATA */
+    if(xTaskCreate(
+            sendTelemetryToGroundStation,
+            "displayData",
+            STACK_SIZE,
+            NULL,
+            1,
+            NULL
+    ) != pdPASS){
+        debugln("[-]Display data task creation failed!");
+    }else{
+        debugln("[+]Display data task creation success!");
     }
 
 }

@@ -5,6 +5,7 @@
 #define DEBUG 1
 
 #if DEBUG == 1
+
 #define debug(x) Serial.print(x)
 #define debugln(x) Serial.println(x)
 #define debugf(x, y) Serial.printf(x, y)
@@ -31,6 +32,11 @@
 #define ALTIMETER_QUEUE_LENGTH 10 // todo: change to 2 items
 #define GYROSCOPE_QUEUE_LENGTH 10
 #define FILTERED_DATA_QUEUE_LENGTH 10
+
+/* MQTT constants */
+#define mqtt_server ""
+#define MQTT_BUFFER_SIZE 300
+#define MQTT_PORT 1883
 
 
 #endif

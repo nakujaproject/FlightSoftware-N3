@@ -1,12 +1,14 @@
 #include <Arduino.h>
 #include <Wire.h>
+#include <WiFi.h>
+#include <PubSubClient.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_MPU6050.h> 
 #include <Adafruit_BMP085.h>
 #include "sensors.h"
 #include "defs.h"
 
-/* create WIFI Client */
+/* create Wi-Fi Client */
 WiFiClient wifi_client;
 
 /* create MQTT publish-subscribe client */
@@ -59,13 +61,6 @@ void initialize_altimeter(){
     debugln("[+]Altimeter initialized");
 }
 
-void initializeMQTTParameters(){
-    /* this functions creates an MQTT client for transmitting telemetry data */
-    client.setBufferSize(MQTT_BUFFER_SIZE);
-    client.setServer(mqtt_server, MQTT_PORT);
-
-}
-
 /* data variables */
 /* gyroscope data */
 
@@ -88,6 +83,28 @@ struct Altimeter_Data{
 QueueHandle_t gyroscope_data_queue;
 QueueHandle_t altimeter_data_queue;
 QueueHandle_t filtered_data_queue;
+
+void connectToWifi(){
+    /* Connect to a Wi-Fi network */
+    debugln("[..]Scanning for network...");
+
+    WiFi.begin(SSID, PASSWORD);
+
+    while (WiFi.status() != WL_CONNECTED)
+    {
+        delay(500);
+        debugln("[..]Scanning for network...");
+    }
+
+    debugln("[+]Network found");debug("[+]My IP address: "); debugln();
+    debugln(WiFi.localIP());
+}
+
+void initializeMQTTParameters(){
+    /* this functions creates an MQTT client for transmitting telemetry data */
+    mqtt_client.setBufferSize(MQTT_BUFFER_SIZE);
+    mqtt_client.setServer(MQTT_SERVER, MQTT_PORT);
+}
 
 void readAltimeter(void* pvParameters){
 
@@ -212,50 +229,74 @@ void publishMQTTMessage(struct Altimeter_Data altimeter_data, struct Acceleratio
             );
 
     /* publish the data to N3/TelemetryData MQTT channel */
-    client.publish("N3/TelemetryData", "Y-Acceleration, Velocity, Altitude, Pressure");
-    client.publish("N3/TelemetryData", telemetry_data);
-
+    mqtt_client.publish("n3/telemetry-data", "y-acceleration, velocity, altitude, pressure");
+    mqtt_client.publish("n3/telemetry-data", telemetry_data);
 }
 
 void transmitTelemetry(void* pvParameters){
     /* This function sends data to the ground station */
     while(true){
         /*  create two pointers to the data structures to be transmitted */
-        struct Acceleration_Data gyroscope_buffer;
-        struct Altimeter_Data altimeter_buffer;
+        struct Acceleration_Data gyroscope_data_receive;
+        struct Altimeter_Data altimeter_data_receive;
 
         /* receive data into respective queues */
-        if( (xQueueReceive(gyroscope_data_queue, &gyroscope_buffer, portMAX_DELAY) == pdPASS) || (xQueueReceive(altimeter_data_queue, &altimeter_buffer, portMAX_DELAY) == pdPASS) ){
+        if( (xQueueReceive(gyroscope_data_queue, &gyroscope_data_receive, portMAX_DELAY) == pdPASS) || (xQueueReceive(altimeter_data_queue, &altimeter_data_receive, portMAX_DELAY) == pdPASS) ){
             /* this means all the data has been received successfully into any one of the queues and is ready for transmission
              *
-             * todo: change this AND operator. the danger is that if one queue is not able to receive, we will not receive any data
+             * todo: change this OR operator. the danger is that if one queue is not able to receive, we will not receive any data
+             *
              *
              * */
 
             /* publish the data to ground */
-            publishMQTTMessage(altimeter_buffer, gyroscope_buffer);
 
+//            char telemetry_data[300];
+
+            /* build telemetry string message
+             * The data to be sent is:
+             *
+             * y-axis acceleration
+             * Velocity
+             * Altitude above ground level (AGL)
+             * Pressure
+             *
+             * */
+//            sprintf(telemetry_data,
+//                    "%.3f, %.3f, %.3f, %.3f\n",
+//                    gyroscope_data_receive.ay,
+//                    altimeter_data_receive.velocity,
+//                    altimeter_data_receive.AGL,
+//                    altimeter_data_receive.pressure
+//            );
+
+            debugln("[+]Sending data");
+
+            /* publish the data to N3/TelemetryData MQTT channel */
+            mqtt_client.publish("n3/telemetry-data", "test message");
+//            mqtt_client.publish("n3/telemetry-data", "y-acceleration, velocity, altitude, pressure");
+//            mqtt_client.publish("N3/TelemetryData", telemetry_data);
 
         }else{
-
-
+            debugln("[-]Failed to receive data for sending");
         }
-
-
     }
 }
 
-void setup()
-{
+void setup(){
     /* initialize serial */
     Serial.begin(115200);
+
+    /* connect to WiFi*/
+    connectToWifi();
 
     /* initialize sensors */
     initialize_gyroscope();
     initialize_altimeter();
     // todo: initialize flash memory
 
-    initializeMQTTParameters();
+    mqtt_client.setBufferSize(MQTT_BUFFER_SIZE);
+    mqtt_client.setServer(MQTT_SERVER, 1883);
 
     debugln("Creating queues...");
 
@@ -297,7 +338,7 @@ void setup()
            "readAltimeter",             /* Function name - for debugging */
            STACK_SIZE,                  /* Stack depth in words */
            NULL,                        /* parameter to be passed to the task */
-           tskIDLE_PRIORITY + 1,        /* Task priority - in this case 1 */
+           2,        /* Task priority - in this case 1 */
            NULL                         /* task handle that can be passed to other tasks to reference the task */
    ) != pdPASS){
     // if task creation is not successful
@@ -313,7 +354,7 @@ void setup()
            "readGyroscope",
            STACK_SIZE,                  
            NULL,                       
-           1,        
+           2,
            NULL    
    ) != pdPASS){
     debugln("[-]Read-Gyroscope task creation failed!");
@@ -327,7 +368,7 @@ void setup()
            "displayData",
            STACK_SIZE,
            NULL,
-           1,
+           2,
            NULL
            ) != pdPASS){
     debugln("[-]Display data task creation failed!");
@@ -337,7 +378,7 @@ void setup()
 
     /* TASK 4: TRANSMIT TELEMETRY DATA */
     if(xTaskCreate(
-            sendTelemetryToGroundStation,
+            transmitTelemetry,
             "displayData",
             STACK_SIZE,
             NULL,
@@ -352,5 +393,6 @@ void setup()
 }
 
 void loop(){
+    mqtt_client.publish("n3/telemetry-data", "Hello from flight");
     delay(1);
 }

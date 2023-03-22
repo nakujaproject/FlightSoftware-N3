@@ -34,7 +34,7 @@
 #define FILTERED_DATA_QUEUE_LENGTH 10
 
 /* MQTT constants */
-const char* MQTT_SERVER = "192.168.0.108";
+const char* MQTT_SERVER = "192.168.1.100";
 #define MQTT_BUFFER_SIZE 300
 #define MQTT_PORT 1883
 

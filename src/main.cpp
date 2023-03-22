@@ -12,7 +12,7 @@
 WiFiClient wifi_client;
 
 /* create MQTT publish-subscribe client */
-PubSubClient mqtt_client;
+PubSubClient mqtt_client(wifi_client);
 
 /* create gyroscope object */
 Adafruit_MPU6050 gyroscope;
@@ -233,6 +233,7 @@ void publishMQTTMessage(struct Altimeter_Data altimeter_data, struct Acceleratio
     /* publish the data to N3/TelemetryData MQTT channel */
 //    mqtt_client.publish("n3/telemetry-data", "y-acceleration, velocity, altitude, pressure");
     mqtt_client.publish("n3/telemetry-data", telemetry_data);
+    // mqtt_client
 }
 
 void transmitTelemetry(void* pvParameters){
@@ -286,6 +287,42 @@ void transmitTelemetry(void* pvParameters){
     }
 }
 
+void testTelemetry(void * pvParameter){
+    while(1){
+        mqtt_client.publish("n3/telemetry-data", "Hello from flight!");
+    }
+}
+
+void reconnect()
+{
+    while (!mqtt_client.connected())
+    {
+        // Serial.begin(115200);
+        debug("Attempting MQTT connection...");
+        String clientId = "FCClient-";
+        clientId += String(random(0xffff), HEX);
+        if (mqtt_client.connect(clientId.c_str()))
+        {
+            debugln("Connected");
+            mqtt_client.publish("n3/telemetry-data","Connected");
+        }
+        else
+        {
+            debug("failed,rc=");
+            debug(mqtt_client.state());
+            debugln(" reconnecting");
+            delay(500);
+        }
+    }
+}
+
+void callback(char *topic, byte* message, unsigned int length) {
+//  client.subscribe(topic);
+//  client.publish(inTopic, "We are on ma nigga");
+
+}
+
+
 void setup(){
     /* initialize serial */
     Serial.begin(115200);
@@ -299,7 +336,9 @@ void setup(){
     // todo: initialize flash memory
 
     mqtt_client.setBufferSize(MQTT_BUFFER_SIZE);
-    mqtt_client.setServer(MQTT_SERVER, 1883);
+    mqtt_client.setServer(MQTT_SERVER, MQTT_PORT);
+    mqtt_client.setCallback(callback);
+
 
     debugln("Creating queues...");
 
@@ -366,23 +405,23 @@ void setup(){
    }
 
     /* TASK 3: DISPLAY DATA ON SERIAL MONITOR - FOR DEBUGGING */
-   if(xTaskCreate(
-           displayData,
-           "displayData",
-           STACK_SIZE,
-           NULL,
-           2,
-           NULL
-           ) != pdPASS){
-    debugln("[-]Display data task creation failed!");
-    }else{
-    debugln("[+]Display data task creation success!");
-    }
+//    if(xTaskCreate(
+//            displayData,
+//            "displayData",
+//            STACK_SIZE,
+//            NULL,
+//            2,
+//            NULL
+//            ) != pdPASS){
+//     debugln("[-]Display data task creation failed!");
+//     }else{
+//     debugln("[+]Display data task creation success!");
+//     }
 
     /* TASK 4: TRANSMIT TELEMETRY DATA */
     if(xTaskCreate(
-            transmitTelemetry,
-            "displayData",
+            testTelemetry,
+            "test",
             STACK_SIZE,
             NULL,
             1,
@@ -397,5 +436,10 @@ void setup(){
 
 void loop(){
     mqtt_client.publish("n3/telemetry-data", "Hello from flight");
+     if (!mqtt_client.connected())  // Reconnect if connection is lost
+    {
+      reconnect();
+    }
+    mqtt_client.loop();
     delay(1);
 }

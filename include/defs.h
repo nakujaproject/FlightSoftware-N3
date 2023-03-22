@@ -34,13 +34,12 @@
 #define FILTERED_DATA_QUEUE_LENGTH 10
 
 /* MQTT constants */
-const char* MQTT_SERVER = "192.168.8.41";
+const char* MQTT_SERVER = "192.168.0.108";
 #define MQTT_BUFFER_SIZE 300
 #define MQTT_PORT 1883
 
 /* WIFI credentials */
-const char* SSID = "Eduh";
-const char* PASSWORD = "password2";
-
+const char* SSID = "onboard";
+const char* PASSWORD = "123456789";
 
 #endif

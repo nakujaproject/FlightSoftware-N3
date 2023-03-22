@@ -222,14 +222,16 @@ void publishMQTTMessage(struct Altimeter_Data altimeter_data, struct Acceleratio
      * */
     sprintf(telemetry_data,
             "%.3f, %.3f, %.3f, %.3f\n",
+            acceleration_data.ax,
             acceleration_data.ay,
+            acceleration_data.az,
             altimeter_data.velocity,
             altimeter_data.AGL,
             altimeter_data.pressure
             );
 
     /* publish the data to N3/TelemetryData MQTT channel */
-    mqtt_client.publish("n3/telemetry-data", "y-acceleration, velocity, altitude, pressure");
+//    mqtt_client.publish("n3/telemetry-data", "y-acceleration, velocity, altitude, pressure");
     mqtt_client.publish("n3/telemetry-data", telemetry_data);
 }
 
@@ -273,7 +275,8 @@ void transmitTelemetry(void* pvParameters){
             debugln("[+]Sending data");
 
             /* publish the data to N3/TelemetryData MQTT channel */
-            mqtt_client.publish("n3/telemetry-data", "test message");
+
+            mqtt_client.publish("n3/telemetry-data", "Hello from flight!");
 //            mqtt_client.publish("n3/telemetry-data", "y-acceleration, velocity, altitude, pressure");
 //            mqtt_client.publish("N3/TelemetryData", telemetry_data);
 

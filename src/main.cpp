@@ -67,14 +67,14 @@ void initialize_altimeter(){
 /* gyroscope data */
 
 struct Acceleration_Data{
-    float ax;
-    float ay; 
-    float az;
+    double ax;
+    double ay; 
+    double az;
 };
 
 struct Altimeter_Data{
     int32_t pressure;
-    float altitude;
+    double altitude;
     double velocity;
     double AGL; /* altitude above ground level */
 };
@@ -85,8 +85,8 @@ struct Telemetry_Data{
     float az;
     int32_t pressure;
     float altitude;
-    double velocity;
-    double AGL; /* altitude above ground level */
+    float velocity;
+    float AGL; /* altitude above ground level */
 };
 
 /* create queue to store altimeter data
@@ -224,52 +224,43 @@ void transmitTelemetry(void* pvParameters){
     /* This function sends data to the ground station */
 
      /*  create two pointers to the data structures to be transmitted */
+    
+    char telemetry_data[20];
     struct Acceleration_Data gyroscope_data_receive;
     struct Altimeter_Data altimeter_data_receive;
-
-    char telemetry_data[300];
 
     while(true){    
         
         /* receive data into respective queues */
         if(xQueueReceive(gyroscope_data_queue, &gyroscope_data_receive, portMAX_DELAY) == pdPASS){
-            /* this means all the data has been received successfully into any one of the queues and is ready for transmission
-             *
-             * todo: change this OR operator. the danger is that if one queue is not able to receive, we will not receive any data
-             *
-             * */
+            debugln("[+]Gyro data ready for sending ");
+        }else{
+            debugln("[-]Failed to receive gyro data");
+        }
 
-            /* publish the data to ground-station */
+        if(xQueueReceive(altimeter_data_queue, &altimeter_data_receive, portMAX_DELAY) == pdPASS){
+            debugln("[+]Altimeter data ready for sending ");
+        }else{
+            debugln("[-]Failed to receive altimeter data");
+        }
 
-            /* build telemetry string message
-             * The data to be sent is:
-             *
-             * y-axis acceleration
-             * Velocity
-             * Altitude above ground level (AGL)
-             * Pressure
-             *
-             * */
-            sprintf(telemetry_data,
-                    "%.3f, %.3f, %.3f, %.3f\n",
-                    gyroscope_data_receive.ax,
-                    gyroscope_data_receive.ay,
-                    gyroscope_data_receive.az
+        sprintf(telemetry_data,
+                "%.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %i \n",
+                gyroscope_data_receive.ax,
+                gyroscope_data_receive.ay,
+                gyroscope_data_receive.az,
+                altimeter_data_receive.AGL,
+                altimeter_data_receive.altitude,
+                altimeter_data_receive.velocity,
+                altimeter_data_receive.pressure
             );
 
-            debugln("[+]Sending data");
-
-            /* publish the data to N3/TelemetryData MQTT channel */
-
-            if(mqtt_client.publish("n3/telemetry", telemetry_data)){
-                debugln("[+]Data sent");
-            } else{
-                debugln("Failed to receive data");
-            }
-
-        }else{
-            debugln("[-]Failed to receive data for sending");
+        if(mqtt_client.publish("n3/telemetry", telemetry_data)){
+            debugln("[+]Data sent");
+        } else{
+            debugln("[-]Data not sent");
         }
+
     }
 }
 
@@ -398,18 +389,18 @@ void setup(){
     }
 
     /* TASK 4: TRANSMIT TELEMETRY DATA */
-    // if(xTaskCreate(
-    //         transmitTelemetry,
-    //         "transmit_telemetry",
-    //         STACK_SIZE,
-    //         NULL,
-    //         1,
-    //         NULL
-    // ) != pdPASS){
-    //     debugln("[-]Transmit task failed to create");
-    // }else{
-    //     debugln("[+]Transmit task created success");
-    // }
+    if(xTaskCreate(
+            transmitTelemetry,
+            "transmit_telemetry",
+            STACK_SIZE,
+            NULL,
+            2,
+            NULL
+    ) != pdPASS){
+        debugln("[-]Transmit task failed to create");
+    }else{
+        debugln("[+]Transmit task created success");
+    }
 
     // if(xTaskCreate(
     //         testMQTT,
@@ -432,6 +423,8 @@ void loop(){
        /* try to reconnect if connection is lost */
        reconnect();
    }
+
+   mqtt_client.loop();
 
 
 }

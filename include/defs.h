@@ -31,15 +31,15 @@
 #define STACK_SIZE 2048
 #define ALTIMETER_QUEUE_LENGTH 10 // todo: change to 2 items
 #define GYROSCOPE_QUEUE_LENGTH 10
+#define ALL_TELEMETRY_DATA_QUEUE_LENGTH 10
 #define FILTERED_DATA_QUEUE_LENGTH 10
 
 /* MQTT constants */
-const char* MQTT_SERVER = "192.168.0.108";
-#define MQTT_BUFFER_SIZE 300
+#define MQTT_SERVER "192.168.1.117"
 #define MQTT_PORT 1883
 
 /* WIFI credentials */
-const char* SSID = "onboard";
-const char* PASSWORD = "123456789";
+const char* SSID = "Gakibia-Unit3";
+const char* PASSWORD = "password";
 
 #endif

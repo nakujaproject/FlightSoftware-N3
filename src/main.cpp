@@ -8,11 +8,14 @@
 #include "sensors.h"
 #include "defs.h"
 
+/* flash memory variables */
+
+
 /* create Wi-Fi Client */
 WiFiClient wifi_client;
 
 /* create MQTT publish-subscribe client */
-PubSubClient mqtt_client;
+PubSubClient mqtt_client(wifi_client);
 
 /* create gyroscope object */
 Adafruit_MPU6050 gyroscope;
@@ -20,7 +23,7 @@ Adafruit_MPU6050 gyroscope;
 /* create altimeter objects */
 Adafruit_BMP085 altimeter;
 
-/* integration variables */
+/* position integration variables */
 long long current_time = 0;
 long long previous_time = 0;
 
@@ -55,7 +58,6 @@ void initialize_altimeter(){
     if (!altimeter.begin()) {
         debugln("[-]Could not find a valid altimeter sensor");
         while (1) {}
-
     }
 
     debugln("[+]Altimeter initialized");
@@ -77,11 +79,22 @@ struct Altimeter_Data{
     double AGL; /* altitude above ground level */
 };
 
+struct Telemetry_Data{
+    float ax;
+    float ay; 
+    float az;
+    int32_t pressure;
+    float altitude;
+    double velocity;
+    double AGL; /* altitude above ground level */
+};
+
 /* create queue to store altimeter data
  * store pressure and altitude
  * */
 QueueHandle_t gyroscope_data_queue;
 QueueHandle_t altimeter_data_queue;
+QueueHandle_t telemetry_data_queue; /* This queue will hold all the sensor data for transmission to ground station*/
 QueueHandle_t filtered_data_queue;
 
 void connectToWifi(){
@@ -101,8 +114,7 @@ void connectToWifi(){
 }
 
 void initializeMQTTParameters(){
-    /* this functions creates an MQTT client for transmitting telemetry data */
-    mqtt_client.setBufferSize(MQTT_BUFFER_SIZE);
+    /* this functions creates an MQTT client for transmitting telemetry data */;
     mqtt_client.setServer(MQTT_SERVER, MQTT_PORT);
 }
 
@@ -113,6 +125,7 @@ void readAltimeter(void* pvParameters){
          * This is the pressure from the sea level.
          * */
         struct Altimeter_Data altimeter_data;
+        struct Telemetry_Data altimeter_telemetry_data;
 
         /* Read pressure
          * This is the pressure from the sea level
@@ -207,53 +220,26 @@ void displayData(void* pvParameters){
    }
 }
 
-void publishMQTTMessage(struct Altimeter_Data altimeter_data, struct Acceleration_Data acceleration_data){
-    /* This function creates the message to be sent to the ground station over MQTT*/
-    char telemetry_data[300];
-
-    /* build telemetry string message
-     * The data to be sent is:
-     *
-     * y-axis acceleration
-     * Velocity
-     * Altitude above ground level (AGL)
-     * Pressure
-     *
-     * */
-    sprintf(telemetry_data,
-            "%.3f, %.3f, %.3f, %.3f\n",
-            acceleration_data.ax,
-            acceleration_data.ay,
-            acceleration_data.az,
-            altimeter_data.velocity,
-            altimeter_data.AGL,
-            altimeter_data.pressure
-            );
-
-    /* publish the data to N3/TelemetryData MQTT channel */
-//    mqtt_client.publish("n3/telemetry-data", "y-acceleration, velocity, altitude, pressure");
-    mqtt_client.publish("n3/telemetry-data", telemetry_data);
-}
-
 void transmitTelemetry(void* pvParameters){
     /* This function sends data to the ground station */
-    while(true){
-        /*  create two pointers to the data structures to be transmitted */
-        struct Acceleration_Data gyroscope_data_receive;
-        struct Altimeter_Data altimeter_data_receive;
 
+     /*  create two pointers to the data structures to be transmitted */
+    struct Acceleration_Data gyroscope_data_receive;
+    struct Altimeter_Data altimeter_data_receive;
+
+    char telemetry_data[300];
+
+    while(true){    
+        
         /* receive data into respective queues */
-        if( (xQueueReceive(gyroscope_data_queue, &gyroscope_data_receive, portMAX_DELAY) == pdPASS) || (xQueueReceive(altimeter_data_queue, &altimeter_data_receive, portMAX_DELAY) == pdPASS) ){
+        if(xQueueReceive(gyroscope_data_queue, &gyroscope_data_receive, portMAX_DELAY) == pdPASS){
             /* this means all the data has been received successfully into any one of the queues and is ready for transmission
              *
              * todo: change this OR operator. the danger is that if one queue is not able to receive, we will not receive any data
              *
-             *
              * */
 
-            /* publish the data to ground */
-
-//            char telemetry_data[300];
+            /* publish the data to ground-station */
 
             /* build telemetry string message
              * The data to be sent is:
@@ -264,27 +250,54 @@ void transmitTelemetry(void* pvParameters){
              * Pressure
              *
              * */
-//            sprintf(telemetry_data,
-//                    "%.3f, %.3f, %.3f, %.3f\n",
-//                    gyroscope_data_receive.ay,
-//                    altimeter_data_receive.velocity,
-//                    altimeter_data_receive.AGL,
-//                    altimeter_data_receive.pressure
-//            );
+            sprintf(telemetry_data,
+                    "%.3f, %.3f, %.3f, %.3f\n",
+                    gyroscope_data_receive.ax,
+                    gyroscope_data_receive.ay,
+                    gyroscope_data_receive.az
+            );
 
             debugln("[+]Sending data");
 
             /* publish the data to N3/TelemetryData MQTT channel */
 
-            mqtt_client.publish("n3/telemetry-data", "Hello from flight!");
-//            mqtt_client.publish("n3/telemetry-data", "y-acceleration, velocity, altitude, pressure");
-//            mqtt_client.publish("N3/TelemetryData", telemetry_data);
+            if(mqtt_client.publish("n3/telemetry", telemetry_data)){
+                debugln("[+]Data sent");
+            } else{
+                debugln("Failed to receive data");
+            }
 
         }else{
             debugln("[-]Failed to receive data for sending");
         }
     }
 }
+
+void reconnect(){
+
+    while(!mqtt_client.connected()){
+        debug("[..]Attempting MQTT connection...");
+        String client_id = "[+]FC Client - ";
+        client_id += String(random(0XFFFF), HEX);
+
+        if(mqtt_client.connect(client_id.c_str())){
+            debugln("[+]MQTT connected");
+        }
+        // todo: else
+    }
+}
+
+void testMQTT(void *pvParameters){
+    while(true){
+        debugln("Publishing data");
+        if(mqtt_client.publish("n3/telemetry", "Hello from flight!")){
+            debugln("Data sent");
+        }else{
+            debugln("Unable to send data");
+        }
+    }
+}
+
 
 void setup(){
     /* initialize serial */
@@ -298,8 +311,8 @@ void setup(){
     initialize_altimeter();
     // todo: initialize flash memory
 
-    mqtt_client.setBufferSize(MQTT_BUFFER_SIZE);
-    mqtt_client.setServer(MQTT_SERVER, 1883);
+    // mqtt_client.setBufferSize(MQTT_BUFFER_SIZE);
+    mqtt_client.setServer(MQTT_SERVER, MQTT_PORT);
 
     debugln("Creating queues...");
 
@@ -308,6 +321,9 @@ void setup(){
 
     /* create altimeter_data_queue */   
     altimeter_data_queue = xQueueCreate(ALTIMETER_QUEUE_LENGTH, sizeof(struct Altimeter_Data));
+
+    /* create queue to hols all the sensor's data */
+    telemetry_data_queue = xQueueCreate(ALL_TELEMETRY_DATA_QUEUE_LENGTH, sizeof(struct Telemetry_Data));
 
     /* check if the queues were created successfully */
     if(gyroscope_data_queue == NULL){
@@ -327,6 +343,8 @@ void setup(){
     } else{
         debugln("[+]Filtered data queue creation success");
     }
+
+    
     
     /* Create tasks
      * All tasks have a stack size of 1024 words - not bytes!
@@ -365,7 +383,7 @@ void setup(){
     debugln("[+]Read-Gyroscope task creation success!");
    }
 
-    /* TASK 3: DISPLAY DATA ON SERIAL MONITOR - FOR DEBUGGING */
+   /* TASK 3: DISPLAY DATA ON SERIAL MONITOR - FOR DEBUGGING */
    if(xTaskCreate(
            displayData,
            "displayData",
@@ -380,22 +398,40 @@ void setup(){
     }
 
     /* TASK 4: TRANSMIT TELEMETRY DATA */
-    if(xTaskCreate(
-            transmitTelemetry,
-            "displayData",
-            STACK_SIZE,
-            NULL,
-            1,
-            NULL
-    ) != pdPASS){
-        debugln("[-]Display data task creation failed!");
-    }else{
-        debugln("[+]Display data task creation success!");
-    }
+    // if(xTaskCreate(
+    //         transmitTelemetry,
+    //         "transmit_telemetry",
+    //         STACK_SIZE,
+    //         NULL,
+    //         1,
+    //         NULL
+    // ) != pdPASS){
+    //     debugln("[-]Transmit task failed to create");
+    // }else{
+    //     debugln("[+]Transmit task created success");
+    // }
+
+    // if(xTaskCreate(
+    //         testMQTT,
+    //         "testMQTT",
+    //         STACK_SIZE,
+    //         NULL,
+    //         1,
+    //         NULL
+    // ) != pdPASS){
+    //     debugln("[-]Test mqtt task failed to create");
+    // }else{
+    //     debugln("[+]Test mqtt task created success");
+    // }
 
 }
 
 void loop(){
-    mqtt_client.publish("n3/telemetry-data", "Hello from flight");
-    delay(1);
+
+   if(!mqtt_client.connected()){
+       /* try to reconnect if connection is lost */
+       reconnect();
+   }
+
+
 }

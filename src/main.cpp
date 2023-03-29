@@ -9,7 +9,13 @@
 #include "defs.h"
 #include "state_machine.h"
 
-/* DEBUG */
+/**
+ * DEBUG 
+ * debug functions
+ * 1. display_data()
+ * 2. counter_update()
+ * 
+ */
 int state_leds[5] = {4, 5, 18, 23, 2};
 int state;
 
@@ -328,7 +334,7 @@ void counter_update(void* pvParameters){
     }
 }
 
-void testFSM(void* pvParameters){
+void flight_state_check(void* pvParameters){
     /* Test the Finite State Machine that will be used to notify ground station about flight events */
     long previous_time = 0;
     long current_time = 0;
@@ -382,7 +388,7 @@ void testFSM(void* pvParameters){
                 
                 default:
                     break;
-                    
+
             }
             
 
@@ -489,19 +495,21 @@ void setup(){
     debugln("[+]Read-Gyroscope task creation success!");
    }
 
-   /* TASK 3: DISPLAY DATA ON SERIAL MONITOR - FOR DEBUGGING */
-//    if(xTaskCreate(
-//            displayData,
-//            "displayData",
-//            STACK_SIZE,
-//            NULL,
-//            2,
-//            NULL
-//            ) != pdPASS){
-//     debugln("[-]Display data task creation failed!");
-//     }else{
-//     debugln("[+]Display data task creation success!");
-//     }
+    #ifdef DISPLAY_DATA_DEBUG
+    /* TASK 3: DISPLAY DATA ON SERIAL MONITOR - FOR DEBUGGING */
+    if(xTaskCreate(
+            displayData,
+            "displayData",
+            STACK_SIZE,
+            NULL,
+            2,
+            NULL
+            ) != pdPASS){
+        debugln("[-]Display data task creation failed!");
+        }else{
+        debugln("[+]Display data task creation success!");
+        }
+    #endif
 
     /* TASK 4: TRANSMIT TELEMETRY DATA */
     if(xTaskCreate(
@@ -531,7 +539,7 @@ void setup(){
     // }
 
     if(xTaskCreate(
-            testFSM,
+            flight_state_check,
             "testFSM",
             STACK_SIZE,
             NULL,
@@ -543,7 +551,7 @@ void setup(){
         debugln("[+]FSM task created success");
     }
 
-    
+    #ifdef FSM_COUNTER_DEBUG
     if(xTaskCreate(
             counter_update,
             "counter_update",
@@ -556,6 +564,7 @@ void setup(){
     }else{
         debugln("[+]Counter task created success");
     }
+    #endif
 
 }
 

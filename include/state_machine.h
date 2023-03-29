@@ -1,16 +1,18 @@
 #ifndef STATE_MACHINE_H
 #define STATE_MACHINE_H
 
+#include "defs.h"
+
 class State_machine{
 
     public:
-        int pre_flight();
-        int powered_flight();
-        int coasting();
-        int apogee();
-        int ballistic_descent();
-        int parachute_deploy();
-        int post_flight();
+        int32_t pre_flight();
+        int32_t powered_flight();
+        int32_t coasting();
+        int32_t apogee();
+        int32_t ballistic_descent();
+        int32_t parachute_deploy();
+        int32_t post_flight();
 };
 
 /* class members declaration */

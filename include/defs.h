@@ -1,7 +1,7 @@
 #ifndef DEFS_H
 #define DEFS_H
 
-/* debug enable for use during testing */
+/* debug parameters for use during testing - disable before launch */
 #define DEBUG 1
 
 #if DEBUG == 1
@@ -17,6 +17,11 @@
 #define debugf(x, y)
 
 #endif
+
+#define DISPLAY_DATA_DEBUG 1 // if enabled, data will be displayed on the serial monitor
+#define FSM_COUNTER_DEBUG 1
+
+/* end of debug parameters */
 
 /* timing constant */
 #define SETUP_DELAY 300

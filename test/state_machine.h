@@ -13,7 +13,6 @@ class State_machine{
         int ballistic_descent();
         int parachute_deploy();
         int post_flight();
-
 };
 
 #endif

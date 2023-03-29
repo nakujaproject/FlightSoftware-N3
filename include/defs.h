@@ -33,13 +33,27 @@
 #define GYROSCOPE_QUEUE_LENGTH 10
 #define ALL_TELEMETRY_DATA_QUEUE_LENGTH  10
 #define FILTERED_DATA_QUEUE_LENGTH 10
+#define FLIGHT_STATES_QUEUE_LENGTH 1
 
 /* MQTT constants */
 #define MQTT_SERVER "192.168.1.117"
 #define MQTT_PORT 1883
 
 /* WIFI credentials */
-const char* SSID = "Gakibia-Unit3";
-const char* PASSWORD = "password";
+const char* SSID = "iPIC-WIRELESS";
+const char* PASSWORD = "987654321jica";
+
+/* ROCKET FLIGHT STATES */
+#define PRE_FLIGHT          0
+#define POWERED_FLIGHT      1
+#define COASTING            2
+#define APOGEE              3
+#define BALLISTIC_DESCENT   4
+#define PARACHUTE_DESCENT   5
+#define POST_FLIGHT         6
+
+/* LEDs for testing - remove on production */
+#define PRE_FLIGHT_LED 4
+int counter = 0;
 
 #endif

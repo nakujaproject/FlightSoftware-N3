@@ -7,9 +7,13 @@
 #include <Adafruit_BMP085.h>
 #include "sensors.h"
 #include "defs.h"
+#include "state_machine.h"
 
-/* flash memory variables */
+/* DEBUG */
+int state_leds[5] = {4, 5, 18, 23, 2};
+int state;
 
+State_machine fsm;
 
 /* create Wi-Fi Client */
 WiFiClient wifi_client;
@@ -89,6 +93,16 @@ struct Telemetry_Data{
     float AGL; /* altitude above ground level */
 };
 
+// typedef struct{
+//     int PRE_FLIGHT   =       0;
+//     int POWERED_FLIGHT =      1;
+//     int COASTING        =    2;
+//     int APOGEE             =  3;
+//     int BALLISTIC_DESCENT =   4;
+//     int PARACHUTE_DESCENT  = 5;
+//     int POST_FLIGHT        = 6;
+// } FLIGHT_STATES;
+
 /* create queue to store altimeter data
  * store pressure and altitude
  * */
@@ -96,6 +110,7 @@ QueueHandle_t gyroscope_data_queue;
 QueueHandle_t altimeter_data_queue;
 QueueHandle_t telemetry_data_queue; /* This queue will hold all the sensor data for transmission to ground station*/
 QueueHandle_t filtered_data_queue;
+QueueHandle_t flight_states_queue;
 
 void connectToWifi(){
     /* Connect to a Wi-Fi network */
@@ -181,6 +196,8 @@ void readGyroscope(void* pvParameters){
         gyro_data.ax = a.acceleration.x;
         gyro_data.ay = a.acceleration.y;
         gyro_data.az = a.acceleration.z;
+
+        // FILTER THIS READINGS
 
         /* send data to gyroscope queue */
         if(xQueueSend(gyroscope_data_queue, &gyro_data, portMAX_DELAY) != pdPASS){
@@ -289,10 +306,100 @@ void testMQTT(void *pvParameters){
     }
 }
 
+void counter_update(void* pvParameters){
+    /* DEBUG
+     * This function updates a counter variable to simulate different flight states
+     * 
+     * The counter will be typically be a value like altitude in real-life that changes with time
+     * Depending on the value of altitude, we can know the different states of flight
+     * 
+     * This function simulates a 4 sec delay between each flight state
+     */
+
+    while(true){
+        counter += 1;
+
+        /* push counter to flight states queue -  this is just a simulation */
+        if(xQueueSend(flight_states_queue, &counter, portMAX_DELAY) != pdPASS){
+            debugln("[-]Failed to add counter to queue");
+        }
+
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
+    }
+}
+
+void testFSM(void* pvParameters){
+    /* Test the Finite State Machine that will be used to notify ground station about flight events */
+    long previous_time = 0;
+    long current_time = 0;
+    
+    long interval = 4000;
+    int state = 0;
+
+    while(true){
+        int32_t flight_state;
+
+        /* print the current flight state */
+        if(xQueueReceive(flight_states_queue, &flight_state, portMAX_DELAY)){
+            debugln("flight state received");
+
+            /* simulate first state */
+            switch (flight_state){
+                case 0:
+                    state = fsm.pre_flight();
+                    debugln("PRE-FLIGHT"); debug(state); debugln();
+                    break;
+
+                case 1:
+                    state = fsm.powered_flight();
+                    debugln("POWERED FLIGHT:"); debug(state); debugln();
+                    break;
+
+                case 2:
+                    state = fsm.coasting();
+                    debugln("COASTING:"); debug(state); debugln();
+                    break;
+
+                case 3:
+                    state = fsm.apogee();
+                    debugln("APOGEE:"); debug(state); debugln();
+                    break;
+
+                case 4:
+                    state = fsm.ballistic_descent();
+                    debugln("BALLISTIC DESCENT:"); debug(state); debugln();
+                    break;
+
+                case 5:
+                    state = fsm.parachute_deploy();
+                    debugln("PARACHUTE DEPLOY:"); debug(state); debugln();
+                    break;
+
+                case 6:
+                    state = fsm.post_flight(); 
+                    debugln("POST FLIGHT:"); debug(state); debugln();
+                    break;
+                
+                default:
+                    break;
+                    
+            }
+            
+
+        }
+
+    }
+}
 
 void setup(){
     /* initialize serial */
     Serial.begin(115200);
+
+
+    /* DEBUG: set up state simulation leds */
+    for(auto pin: state_leds){
+        pinMode(state_leds[pin], OUTPUT);
+    }
 
     /* connect to WiFi*/
     connectToWifi();
@@ -316,6 +423,10 @@ void setup(){
     /* create queue to hols all the sensor's data */
     telemetry_data_queue = xQueueCreate(ALL_TELEMETRY_DATA_QUEUE_LENGTH, sizeof(struct Telemetry_Data));
 
+    /* this queue will hold the flight states */
+    flight_states_queue = xQueueCreate(FLIGHT_STATES_QUEUE_LENGTH, sizeof(int32_t));
+
+
     /* check if the queues were created successfully */
     if(gyroscope_data_queue == NULL){
         debugln("[-]Gyroscope data queue creation failed!");
@@ -335,8 +446,12 @@ void setup(){
         debugln("[+]Filtered data queue creation success");
     }
 
-    
-    
+    if(flight_states_queue == NULL){
+        debugln("[-]Flight states queue creation failed!");
+    } else{
+        debugln("[+]Flight states queue creation success");
+    }
+
     /* Create tasks
      * All tasks have a stack size of 1024 words - not bytes!
      * ESP32 is 32 bit, therefore 32bits x 1024 = 4096 bytes
@@ -375,18 +490,18 @@ void setup(){
    }
 
    /* TASK 3: DISPLAY DATA ON SERIAL MONITOR - FOR DEBUGGING */
-   if(xTaskCreate(
-           displayData,
-           "displayData",
-           STACK_SIZE,
-           NULL,
-           2,
-           NULL
-           ) != pdPASS){
-    debugln("[-]Display data task creation failed!");
-    }else{
-    debugln("[+]Display data task creation success!");
-    }
+//    if(xTaskCreate(
+//            displayData,
+//            "displayData",
+//            STACK_SIZE,
+//            NULL,
+//            2,
+//            NULL
+//            ) != pdPASS){
+//     debugln("[-]Display data task creation failed!");
+//     }else{
+//     debugln("[+]Display data task creation success!");
+//     }
 
     /* TASK 4: TRANSMIT TELEMETRY DATA */
     if(xTaskCreate(
@@ -414,6 +529,33 @@ void setup(){
     // }else{
     //     debugln("[+]Test mqtt task created success");
     // }
+
+    if(xTaskCreate(
+            testFSM,
+            "testFSM",
+            STACK_SIZE,
+            NULL,
+            2,
+            NULL
+    ) != pdPASS){
+        debugln("[-]FSM task failed to create");
+    }else{
+        debugln("[+]FSM task created success");
+    }
+
+    
+    if(xTaskCreate(
+            counter_update,
+            "counter_update",
+            STACK_SIZE,
+            NULL,
+            2,
+            NULL
+    ) != pdPASS){
+        debugln("[-]Counter update task failed to create");
+    }else{
+        debugln("[+]Counter task created success");
+    }
 
 }
 

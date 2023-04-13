@@ -1,0 +1,10 @@
+syntax="proto3";
+
+package flight;
+
+import "vec3.proto";
+
+message GyroReading{
+  Vec3 a = 1;
+  Vec3 g = 2;
+}

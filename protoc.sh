@@ -1,0 +1,1 @@
+protoc --plugin=protoc-gen-nanopb=/home/obara/projects/firmware/nanopb/generator/protoc-gen-nanopb --nanopb_out=. src/models/*.proto

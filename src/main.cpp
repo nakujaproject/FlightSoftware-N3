@@ -5,6 +5,7 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_MPU6050.h> 
 #include <Adafruit_BMP085.h>
+#include <TinyGPS++.h>
 #include "sensors.h"
 #include "defs.h"
 #include "state_machine.h"
@@ -18,7 +19,7 @@
  */
 int state_leds[5] = {4, 5, 18, 23, 2};
 int state;
-
+uint id = 0;
 State_machine fsm;
 
 /* create Wi-Fi Client */
@@ -32,6 +33,10 @@ Adafruit_MPU6050 gyroscope;
 
 /* create altimeter objects */
 Adafruit_BMP085 altimeter;
+
+/* GPS Setup*/
+HardwareSerial hard(2);
+TinyGPSPlus gps;
 
 /* position integration variables */
 long long current_time = 0;
@@ -80,6 +85,9 @@ struct Acceleration_Data{
     double ax;
     double ay; 
     double az;
+    double gx;
+    double gy;
+    double gz;
 };
 
 struct Altimeter_Data{
@@ -93,6 +101,9 @@ struct Telemetry_Data{
     float ax;
     float ay; 
     float az;
+    float gx;
+    float gy; 
+    float gz;
     int32_t pressure;
     float altitude;
     float velocity;
@@ -202,6 +213,9 @@ void readGyroscope(void* pvParameters){
         gyro_data.ax = a.acceleration.x;
         gyro_data.ay = a.acceleration.y;
         gyro_data.az = a.acceleration.z;
+        gyro_data.gx = g.gyro.x;
+        gyro_data.gy = g.gyro.y;
+        gyro_data.gz = g.gyro.z;
 
         // FILTER THIS READINGS
 
@@ -218,12 +232,17 @@ void displayData(void* pvParameters){
    while(true){
        struct Acceleration_Data gyroscope_buffer;
        struct Altimeter_Data altimeter_buffer;
-
+ debug("x: "); debug(gyroscope_buffer.ax); debugln();
+            debug("y: "); debug(gyroscope_buffer.ay); debugln();
+            debug("z: "); debug(gyroscope_buffer.az); debugln();
        if(xQueueReceive(gyroscope_data_queue, &gyroscope_buffer, portMAX_DELAY) == pdPASS){
            debugln("------------------------------");
             debug("x: "); debug(gyroscope_buffer.ax); debugln();
             debug("y: "); debug(gyroscope_buffer.ay); debugln();
             debug("z: "); debug(gyroscope_buffer.az); debugln();
+            debug("roll: "); debug(gyroscope_buffer.gx); debugln();
+            debug("pitch: "); debug(gyroscope_buffer.gy); debugln();
+            debug("yaw: "); debug(gyroscope_buffer.gz); debugln();
 
        }else{
            /* no queue */
@@ -268,10 +287,14 @@ void transmitTelemetry(void* pvParameters){
         }
 
         sprintf(telemetry_data,
-                "%.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %i \n",
+                "%i,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%i",
+                id,
                 gyroscope_data_receive.ax,
                 gyroscope_data_receive.ay,
                 gyroscope_data_receive.az,
+                gyroscope_data_receive.gx,
+                gyroscope_data_receive.gy,
+                gyroscope_data_receive.gz,
                 altimeter_data_receive.AGL,
                 altimeter_data_receive.altitude,
                 altimeter_data_receive.velocity,
@@ -283,7 +306,7 @@ void transmitTelemetry(void* pvParameters){
         } else{
             debugln("[-]Data not sent");
         }
-
+        id+=1;
     }
 }
 
@@ -400,6 +423,10 @@ void flight_state_check(void* pvParameters){
 void setup(){
     /* initialize serial */
     Serial.begin(115200);
+
+    /* Setup GPS*/
+    static const uint32_t GPSbaud = 9600;
+    hard.begin(GPSbaud, SERIAL_8N1, RX, TX);
 
 
     /* DEBUG: set up state simulation leds */

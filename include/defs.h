@@ -41,12 +41,12 @@
 #define FLIGHT_STATES_QUEUE_LENGTH 1
 
 /* MQTT constants */
-#define MQTT_SERVER "192.168.1.117"
-#define MQTT_PORT 1883
+#define MQTT_SERVER "192.168.0.101"
+#define MQTT_PORT 1882
 
 /* WIFI credentials */
-const char* SSID = "iPIC-WIRELESS";
-const char* PASSWORD = "987654321jica";
+const char* SSID = "Nakuja";
+const char* PASSWORD = "987654321";
 
 /* ROCKET FLIGHT STATES */
 #define PRE_FLIGHT          0
@@ -62,3 +62,5 @@ const char* PASSWORD = "987654321jica";
 int counter = 0;
 
 #endif
+#define TX 17
+#define RX 16

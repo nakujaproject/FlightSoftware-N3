@@ -90,6 +90,12 @@ struct Acceleration_Data{
     double gz;
 };
 
+struct GPS_Data{
+    double latitude;
+    double longitude;; 
+    uint time;
+};
+
 struct Altimeter_Data{
     int32_t pressure;
     double altitude;
@@ -108,6 +114,9 @@ struct Telemetry_Data{
     float altitude;
     float velocity;
     float AGL; /* altitude above ground level */
+    double latitude;
+    double longitude;; 
+    uint time;
 };
 
 // typedef struct{
@@ -125,6 +134,7 @@ struct Telemetry_Data{
  * */
 QueueHandle_t gyroscope_data_queue;
 QueueHandle_t altimeter_data_queue;
+QueueHandle_t gps_data_queue;
 QueueHandle_t telemetry_data_queue; /* This queue will hold all the sensor data for transmission to ground station*/
 QueueHandle_t filtered_data_queue;
 QueueHandle_t flight_states_queue;
@@ -228,13 +238,32 @@ void readGyroscope(void* pvParameters){
     }
 }
 
+void readGPS(void* pvParameters){
+    /* This function reads GPS data and sends it to the ground station */
+    while(true){
+        while (hard.available() > 0)
+        {
+            gps.encode(hard.read());
+        }
+        if (gps.location.isUpdated()){
+            struct GPS_Data gps_data;
+            gps_data.latitude = gps.location.lat();
+            gps_data.longitude = gps.location.lng();
+            gps_data.time = gps.time.value();
+            debugln("[!!] GPS Data Received [!!]");
+            if(xQueueSend(gps_data_queue, &gps_data, portMAX_DELAY) != pdPASS){
+                debugln("[-]GPS queue full");
+            }
+            delay(TASK_DELAY);
+        }
+    }
+}
+
 void displayData(void* pvParameters){
    while(true){
        struct Acceleration_Data gyroscope_buffer;
        struct Altimeter_Data altimeter_buffer;
- debug("x: "); debug(gyroscope_buffer.ax); debugln();
-            debug("y: "); debug(gyroscope_buffer.ay); debugln();
-            debug("z: "); debug(gyroscope_buffer.az); debugln();
+       struct GPS_Data gps_buffer;
        if(xQueueReceive(gyroscope_data_queue, &gyroscope_buffer, portMAX_DELAY) == pdPASS){
            debugln("------------------------------");
             debug("x: "); debug(gyroscope_buffer.ax); debugln();
@@ -243,7 +272,6 @@ void displayData(void* pvParameters){
             debug("roll: "); debug(gyroscope_buffer.gx); debugln();
             debug("pitch: "); debug(gyroscope_buffer.gy); debugln();
             debug("yaw: "); debug(gyroscope_buffer.gz); debugln();
-
        }else{
            /* no queue */
        }
@@ -253,10 +281,20 @@ void displayData(void* pvParameters){
             debug("Altitude: "); debug(altimeter_buffer.altitude); debugln();
             debug("Velocity: "); debug(altimeter_buffer.velocity); debugln();
             debug("AGL: "); debug(altimeter_buffer.AGL); debugln();
-           
+            
         }else{
             /* no queue */
         }
+
+        if(xQueueReceive(gps_data_queue, &gps_buffer, portMAX_DELAY) == pdPASS){
+            debug("Lattitude: "); debug(gps_buffer.latitude); debugln();
+            debug("Longitude: "); debug(gps_buffer.longitude); debugln();
+            debug("Time: "); debug(gps_buffer.time); debugln();
+            
+        }else{
+            /* no queue */
+        }
+
 
        delay(10);
    }
@@ -270,6 +308,7 @@ void transmitTelemetry(void* pvParameters){
     char telemetry_data[20];
     struct Acceleration_Data gyroscope_data_receive;
     struct Altimeter_Data altimeter_data_receive;
+    struct GPS_Data gps_data_receive;
 
     while(true){    
         
@@ -286,8 +325,14 @@ void transmitTelemetry(void* pvParameters){
             debugln("[-]Failed to receive altimeter data");
         }
 
+        if(xQueueReceive(gps_data_queue, &gps_data_receive, portMAX_DELAY) == pdPASS){
+            debugln("[+]GPS data ready for sending ");
+        }else{
+            debugln("[-]Failed to receive GPS data");
+        }
+
         sprintf(telemetry_data,
-                "%i,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%i",
+                "%i,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%i,%.2f,%.2f",
                 id,
                 gyroscope_data_receive.ax,
                 gyroscope_data_receive.ay,
@@ -298,7 +343,9 @@ void transmitTelemetry(void* pvParameters){
                 altimeter_data_receive.AGL,
                 altimeter_data_receive.altitude,
                 altimeter_data_receive.velocity,
-                altimeter_data_receive.pressure
+                altimeter_data_receive.pressure,
+                gps_data_receive.latitude,
+                gps_data_receive.longitude
             );
 
         if(mqtt_client.publish("n3/telemetry", telemetry_data)){
@@ -453,6 +500,9 @@ void setup(){
     /* create altimeter_data_queue */   
     altimeter_data_queue = xQueueCreate(ALTIMETER_QUEUE_LENGTH, sizeof(struct Altimeter_Data));
 
+    /* create gps_data_queue */   
+    gps_data_queue = xQueueCreate(GPS_QUEUE_LENGTH, sizeof(struct GPS_Data));
+
     /* create queue to hols all the sensor's data */
     telemetry_data_queue = xQueueCreate(ALL_TELEMETRY_DATA_QUEUE_LENGTH, sizeof(struct Telemetry_Data));
 
@@ -471,6 +521,12 @@ void setup(){
         debugln("[-]Altimeter data queue creation failed!");
     } else{
         debugln("[+]Altimeter data queue creation success");
+    }
+
+    if(gps_data_queue == NULL){
+        debugln("[-]GPS data queue creation failed!");
+    } else{
+        debugln("[+]GPS data queue creation success");
     }
 
     if(filtered_data_queue == NULL){
@@ -498,7 +554,7 @@ void setup(){
            "readAltimeter",             /* Function name - for debugging */
            STACK_SIZE,                  /* Stack depth in words */
            NULL,                        /* parameter to be passed to the task */
-           2,        /* Task priority - in this case 1 */
+           2,        /* Task priority - in thGYROSCOPEis case 1 */
            NULL                         /* task handle that can be passed to other tasks to reference the task */
    ) != pdPASS){
     // if task creation is not successful
@@ -521,6 +577,20 @@ void setup(){
    } else{
     debugln("[+]Read-Gyroscope task creation success!");
    }
+
+   /* TASK 2: READ GPS DATA */
+    if(xTaskCreate(
+              readGPS,         
+              "readGPS",
+              STACK_SIZE,                  
+              NULL,                       
+              2,
+              NULL
+        ) != pdPASS){
+        debugln("[-]Read-GPS task creation failed!");
+    } else{
+        debugln("[+]Read-GPS task creation success!");
+    }
 
     #ifdef DISPLAY_DATA_DEBUG
     /* TASK 3: DISPLAY DATA ON SERIAL MONITOR - FOR DEBUGGING */

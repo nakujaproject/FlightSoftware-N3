@@ -17,7 +17,7 @@
  * 2. counter_update()
  * 
  */
-int state_leds[5] = {4, 5, 18, 23, 2};
+int state_leds[5] = {4, 5, 18, 23, LED_BUILTIN};
 int state;
 uint id = 0;
 State_machine fsm;
@@ -140,6 +140,7 @@ QueueHandle_t filtered_data_queue;
 QueueHandle_t flight_states_queue;
 
 void connectToWifi(){
+    digitalWrite(LED_BUILTIN, HIGH);
     /* Connect to a Wi-Fi network */
     debugln("[..]Scanning for network...");
 
@@ -153,6 +154,7 @@ void connectToWifi(){
 
     debugln("[+]Network found");debug("[+]My IP address: "); debugln();
     debugln(WiFi.localIP());
+    digitalWrite(LED_BUILTIN, LOW);
 }
 
 void initializeMQTTParameters(){
@@ -240,17 +242,29 @@ void readGyroscope(void* pvParameters){
 
 void readGPS(void* pvParameters){
     /* This function reads GPS data and sends it to the ground station */
+    struct GPS_Data gps_data;
+    double fallBackLat = -1.0953775626377544;
+    double fallBackLong = 37.01223403257954;
     while(true){
         while (hard.available() > 0)
         {
             gps.encode(hard.read());
         }
         if (gps.location.isUpdated()){
-            struct GPS_Data gps_data;
             gps_data.latitude = gps.location.lat();
             gps_data.longitude = gps.location.lng();
             gps_data.time = gps.time.value();
+            fallBackLat = gps_data.latitude;
+            fallBackLong = gps_data.longitude;
             debugln("[!!] GPS Data Received [!!]");
+            if(xQueueSend(gps_data_queue, &gps_data, portMAX_DELAY) != pdPASS){
+                debugln("[-]GPS queue full");
+            }
+            delay(TASK_DELAY);
+        }else{
+            gps_data.latitude = fallBackLat;
+            gps_data.longitude = fallBackLong;
+            gps_data.time = 20230601;
             if(xQueueSend(gps_data_queue, &gps_data, portMAX_DELAY) != pdPASS){
                 debugln("[-]GPS queue full");
             }
@@ -332,20 +346,20 @@ void transmitTelemetry(void* pvParameters){
         }
 
         sprintf(telemetry_data,
-                "%i,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%i,%.2f,%.2f",
-                id,
-                gyroscope_data_receive.ax,
-                gyroscope_data_receive.ay,
-                gyroscope_data_receive.az,
-                gyroscope_data_receive.gx,
-                gyroscope_data_receive.gy,
-                gyroscope_data_receive.gz,
-                altimeter_data_receive.AGL,
-                altimeter_data_receive.altitude,
-                altimeter_data_receive.velocity,
-                altimeter_data_receive.pressure,
-                gps_data_receive.latitude,
-                gps_data_receive.longitude
+                "%i,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%i,%.16f,%.16f",
+                id,//0
+                gyroscope_data_receive.ax,//1
+                gyroscope_data_receive.ay,//2
+                gyroscope_data_receive.az,//3
+                gyroscope_data_receive.gx,//4
+                gyroscope_data_receive.gy,//5
+                gyroscope_data_receive.gz,//6
+                altimeter_data_receive.AGL,//7
+                altimeter_data_receive.altitude,//8
+                altimeter_data_receive.velocity,//9
+                altimeter_data_receive.pressure,//10
+                gps_data_receive.latitude,//11
+                gps_data_receive.longitude//12
             );
 
         if(mqtt_client.publish("n3/telemetry", telemetry_data)){

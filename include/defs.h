@@ -42,12 +42,14 @@
 #define FLIGHT_STATES_QUEUE_LENGTH 1
 
 /* MQTT constants */
-#define MQTT_SERVER "192.168.0.101"
+#define MQTT_SERVER "192.168.100.2"
 #define MQTT_PORT 1882
 
 /* WIFI credentials */
-const char* SSID = "Nakuja";
-const char* PASSWORD = "987654321";
+// const char* SSID = "Nakuja";
+// const char* PASSWORD = "987654321";
+const char* SSID = "Happyhome";
+const char* PASSWORD = "JMongare@123";
 
 /* ROCKET FLIGHT STATES */
 #define PRE_FLIGHT          0

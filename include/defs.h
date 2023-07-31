@@ -4,7 +4,7 @@
 /* debug parameters for use during testing - disable before launch */
 #define DEBUG 1
 
-#if DEBUG == 1
+#if DEBUG
 
 #define debug(x) Serial.print(x)
 #define debugln(x) Serial.println(x)
@@ -18,9 +18,6 @@
 
 #endif
 
-#define DISPLAY_DATA_DEBUG 1 // if enabled, data will be displayed on the serial monitor
-#define FSM_COUNTER_DEBUG 1
-
 /* end of debug parameters */
 
 /* timing constant */
@@ -30,7 +27,7 @@
 /* flight constants */
 #define EJECTION_HEIGHT 1000 // eject at 1000m AGL
 #define SEA_LEVEL_PRESSURE 101325 // Assume the sea level pressure is 101325 Pascals - this can change with weather
-#define ALTITUDE_OFFSET 1500 /* this value is the altitude at rocket launch site */
+#define ALTITUDE_OFFSET 1415 /* this value is the altitude at rocket launch site */
 
 /* tasks constants */
 #define STACK_SIZE 2048
@@ -46,10 +43,10 @@
 #define MQTT_PORT 1882
 
 /* WIFI credentials */
-// const char* SSID = "Nakuja";
-// const char* PASSWORD = "987654321";
-const char* SSID = "Happyhome";
-const char* PASSWORD = "JMongare@123";
+const char* SSID = "Nakuja";
+const char* PASSWORD = "987654321";
+// const char* SSID = "Happyhome";
+// const char* PASSWORD = "JMongare@123";
 
 /* ROCKET FLIGHT STATES */
 #define PRE_FLIGHT          0

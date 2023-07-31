@@ -14,12 +14,10 @@
  * DEBUG 
  * debug functions
  * 1. display_data()
- * 2. counter_update()
  * 
  */
 int state_leds[5] = {4, 5, 18, 23, LED_BUILTIN};
 int state;
-uint id = 0;
 State_machine fsm;
 
 /* create Wi-Fi Client */
@@ -51,6 +49,10 @@ float old_y_displacement = 0.0;
 double old_y_velocity = 0.0;
 double new_y_velocity = 0.0;
 double total_y_displacement = 0.0;
+
+//
+double fallBackLat = -1.0953775626377544;
+double fallBackLong = 37.01223403257954;
 
 /* functions to initialize sensors */
 void initialize_gyroscope(){
@@ -119,16 +121,6 @@ struct Telemetry_Data{
     uint time;
 };
 
-// typedef struct{
-//     int PRE_FLIGHT   =       0;
-//     int POWERED_FLIGHT =      1;
-//     int COASTING        =    2;
-//     int APOGEE             =  3;
-//     int BALLISTIC_DESCENT =   4;
-//     int PARACHUTE_DESCENT  = 5;
-//     int POST_FLIGHT        = 6;
-// } FLIGHT_STATES;
-
 /* create queue to store altimeter data
  * store pressure and altitude
  * */
@@ -169,7 +161,6 @@ void readAltimeter(void* pvParameters){
          * This is the pressure from the sea level.
          * */
         struct Altimeter_Data altimeter_data;
-        struct Telemetry_Data altimeter_telemetry_data;
 
         /* Read pressure
          * This is the pressure from the sea level
@@ -180,8 +171,6 @@ void readAltimeter(void* pvParameters){
          * This is the altitude from the sea level
          * */
         altimeter_data.altitude = altimeter.readAltitude(SEA_LEVEL_PRESSURE);
-
-        /*------------- APOGEE DETECTION ALGORITHM -------------------------------------*/
 
         /* approximate velocity from acceleration by integration for apogee detection */
         current_time = millis();
@@ -208,7 +197,7 @@ void readAltimeter(void* pvParameters){
             debugln("[-]Altimeter queue full");
         }
 
-        delay(TASK_DELAY);
+        // delay(TASK_DELAY);
     }
 }
 
@@ -236,15 +225,13 @@ void readGyroscope(void* pvParameters){
             debugln("[-]Gyro queue full");
         }
 
-        delay(TASK_DELAY);
+        // delay(TASK_DELAY);
     }
 }
 
 void readGPS(void* pvParameters){
     /* This function reads GPS data and sends it to the ground station */
     struct GPS_Data gps_data;
-    double fallBackLat = -1.0953775626377544;
-    double fallBackLong = 37.01223403257954;
     while(true){
         while (hard.available() > 0)
         {
@@ -260,7 +247,7 @@ void readGPS(void* pvParameters){
             if(xQueueSend(gps_data_queue, &gps_data, portMAX_DELAY) != pdPASS){
                 debugln("[-]GPS queue full");
             }
-            delay(TASK_DELAY);
+            // delay(TASK_DELAY);
         }else{
             gps_data.latitude = fallBackLat;
             gps_data.longitude = fallBackLong;
@@ -268,7 +255,7 @@ void readGPS(void* pvParameters){
             if(xQueueSend(gps_data_queue, &gps_data, portMAX_DELAY) != pdPASS){
                 debugln("[-]GPS queue full");
             }
-            delay(TASK_DELAY);
+            // delay(TASK_DELAY);
         }
     }
 }
@@ -310,7 +297,7 @@ void displayData(void* pvParameters){
         }
 
 
-       delay(10);
+    //    delay(10);
    }
 }
 
@@ -323,6 +310,8 @@ void transmitTelemetry(void* pvParameters){
     struct Acceleration_Data gyroscope_data_receive;
     struct Altimeter_Data altimeter_data_receive;
     struct GPS_Data gps_data_receive;
+    int32_t flight_state_receive;
+    int id = 0;
 
     while(true){    
         
@@ -345,29 +334,37 @@ void transmitTelemetry(void* pvParameters){
             debugln("[-]Failed to receive GPS data");
         }
 
+        if(xQueueReceive(flight_states_queue, &flight_state_receive, portMAX_DELAY) == pdPASS){
+            debugln("[+]Flight state ready for sending ");
+        }else{
+            debugln("[-]Failed to receive Flight state");
+        }
+
         sprintf(telemetry_data,
-                "%i,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%i,%.16f,%.16f",
-                id,//0
-                gyroscope_data_receive.ax,//1
-                gyroscope_data_receive.ay,//2
-                gyroscope_data_receive.az,//3
-                gyroscope_data_receive.gx,//4
-                gyroscope_data_receive.gy,//5
-                gyroscope_data_receive.gz,//6
-                altimeter_data_receive.AGL,//7
-                altimeter_data_receive.altitude,//8
-                altimeter_data_receive.velocity,//9
-                altimeter_data_receive.pressure,//10
-                gps_data_receive.latitude,//11
-                gps_data_receive.longitude//12
-            );
+            "%i,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%i,%.16f,%.16f,%i,%i",
+            id,//0
+            gyroscope_data_receive.ax,//1
+            gyroscope_data_receive.ay,//2
+            gyroscope_data_receive.az,//3
+            gyroscope_data_receive.gx,//4
+            gyroscope_data_receive.gy,//5
+            gyroscope_data_receive.gz,//6
+            altimeter_data_receive.AGL,//7
+            altimeter_data_receive.altitude,//8
+            altimeter_data_receive.velocity,//9
+            altimeter_data_receive.pressure,//10
+            gps_data_receive.latitude,//11
+            gps_data_receive.longitude,//12
+            gps_data_receive.time,//13
+            flight_state_receive//14
+        );
+        id+=1;
 
         if(mqtt_client.publish("n3/telemetry", telemetry_data)){
             debugln("[+]Data sent");
         } else{
             debugln("[-]Data not sent");
         }
-        id+=1;
     }
 }
 
@@ -396,88 +393,19 @@ void testMQTT(void *pvParameters){
     }
 }
 
-void counter_update(void* pvParameters){
-    /* DEBUG
-     * This function updates a counter variable to simulate different flight states
-     * 
-     * The counter will be typically be a value like altitude in real-life that changes with time
-     * Depending on the value of altitude, we can know the different states of flight
-     * 
-     * This function simulates a 4 sec delay between each flight state
-     */
-
-    while(true){
-        counter += 1;
-
-        /* push counter to flight states queue -  this is just a simulation */
-        if(xQueueSend(flight_states_queue, &counter, portMAX_DELAY) != pdPASS){
-            debugln("[-]Failed to add counter to queue");
-        }
-
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
-    }
-}
 
 void flight_state_check(void* pvParameters){
-    /* Test the Finite State Machine that will be used to notify ground station about flight events */
-    long previous_time = 0;
-    long current_time = 0;
-    
-    long interval = 4000;
-    int state = 0;
-
+    /* Set flight state based on sensor values */
+    int32_t flight_state = fsm.pre_flight();
+    struct Altimeter_Data altimeter_data_receive;
     while(true){
-        int32_t flight_state;
-
-        /* print the current flight state */
-        if(xQueueReceive(flight_states_queue, &flight_state, portMAX_DELAY)){
-            debugln("flight state received");
-
-            /* simulate first state */
-            switch (flight_state){
-                case 0:
-                    state = fsm.pre_flight();
-                    debugln("PRE-FLIGHT"); debug(state); debugln();
-                    break;
-
-                case 1:
-                    state = fsm.powered_flight();
-                    debugln("POWERED FLIGHT:"); debug(state); debugln();
-                    break;
-
-                case 2:
-                    state = fsm.coasting();
-                    debugln("COASTING:"); debug(state); debugln();
-                    break;
-
-                case 3:
-                    state = fsm.apogee();
-                    debugln("APOGEE:"); debug(state); debugln();
-                    break;
-
-                case 4:
-                    state = fsm.ballistic_descent();
-                    debugln("BALLISTIC DESCENT:"); debug(state); debugln();
-                    break;
-
-                case 5:
-                    state = fsm.parachute_deploy();
-                    debugln("PARACHUTE DEPLOY:"); debug(state); debugln();
-                    break;
-
-                case 6:
-                    state = fsm.post_flight(); 
-                    debugln("POST FLIGHT:"); debug(state); debugln();
-                    break;
-                
-                default:
-                    break;
-
-            }
-            
-
+        if(xQueueReceive(altimeter_data_queue, &altimeter_data_receive, portMAX_DELAY) == pdPASS){
+            debugln("[+]Altimeter data in state machine");
+            /*------------- todo: APOGEE DETECTION ALGORITHM -------------------------------------*/
+        }else{
+            debugln("[-]Failed to receive altimeter data in state machine");
         }
-
+        if(xQueueSend(flight_states_queue, &flight_state, portMAX_DELAY) != pdPASS) debugln("[-]Failed to update state");
     }
 }
 
@@ -486,8 +414,7 @@ void setup(){
     Serial.begin(115200);
 
     /* Setup GPS*/
-    static const uint32_t GPSbaud = 9600;
-    hard.begin(GPSbaud, SERIAL_8N1, RX, TX);
+    hard.begin(9600, SERIAL_8N1, RX, TX);
 
 
     /* DEBUG: set up state simulation leds */
@@ -606,8 +533,8 @@ void setup(){
         debugln("[+]Read-GPS task creation success!");
     }
 
-    #ifdef DISPLAY_DATA_DEBUG
     /* TASK 3: DISPLAY DATA ON SERIAL MONITOR - FOR DEBUGGING */
+    if (DEBUG)
     if(xTaskCreate(
             displayData,
             "displayData",
@@ -619,8 +546,7 @@ void setup(){
         debugln("[-]Display data task creation failed!");
         }else{
         debugln("[+]Display data task creation success!");
-        }
-    #endif
+    }
 
     /* TASK 4: TRANSMIT TELEMETRY DATA */
     if(xTaskCreate(
@@ -662,21 +588,6 @@ void setup(){
         debugln("[+]FSM task created success");
     }
 
-    #ifdef FSM_COUNTER_DEBUG
-    if(xTaskCreate(
-            counter_update,
-            "counter_update",
-            STACK_SIZE,
-            NULL,
-            2,
-            NULL
-    ) != pdPASS){
-        debugln("[-]Counter update task failed to create");
-    }else{
-        debugln("[+]Counter task created success");
-    }
-    #endif
-
 }
 
 void loop(){
@@ -687,6 +598,5 @@ void loop(){
    }
 
    mqtt_client.loop();
-
 
 }

@@ -436,37 +436,37 @@ void flight_state_check(void* pvParameters){
             /* simulate first state */
             switch (flight_state){
                 case 0:
-                    state = fsm.pre_flight();
+                    state = fsm.pre_flight('float altitude');
                     debugln("PRE-FLIGHT"); debug(state); debugln();
                     break;
 
                 case 1:
-                    state = fsm.powered_flight();
+                    state = fsm.powered_flight('float altitude');
                     debugln("POWERED FLIGHT:"); debug(state); debugln();
                     break;
 
                 case 2:
-                    state = fsm.coasting();
+                    state = fsm.coasting('float altitude','float velocity');
                     debugln("COASTING:"); debug(state); debugln();
                     break;
 
                 case 3:
-                    state = fsm.apogee();
+                    state = fsm.apogee('float velocity', 'float currentAltitude', 'float previousAltitude');
                     debugln("APOGEE:"); debug(state); debugln();
                     break;
 
                 case 4:
-                    state = fsm.ballistic_descent();
+                    state = fsm.ballistic_descent('float altitude');
                     debugln("BALLISTIC DESCENT:"); debug(state); debugln();
                     break;
 
                 case 5:
-                    state = fsm.parachute_deploy();
+                    state = fsm.parachute_deploy('float altitude');
                     debugln("PARACHUTE DEPLOY:"); debug(state); debugln();
                     break;
 
                 case 6:
-                    state = fsm.post_flight(); 
+                    state = fsm.post_flight('float altitude','float velocity'); 
                     debugln("POST FLIGHT:"); debug(state); debugln();
                     break;
                 

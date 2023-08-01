@@ -64,6 +64,17 @@ const char* PASSWORD = "JMongare@123";
 #define PRE_FLIGHT_LED 4
 int counter = 0;
 
+//define the thresholds of the various displacements that need to be achieved in the state machine
+#define GROUND_STATE_DISPLACEMENT 10
+#define BELOW_APOGEE_LEVEL_DISPLACEMENT 10
+
+// Pin to start ejection charge
+#define EJECTION_PIN 4
+
+
+extern float BASE_ALTITUDE;
+extern float MAX_ALTITUDE;
+
 #endif
 #define TX 17
 #define RX 16

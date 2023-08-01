@@ -6,6 +6,8 @@
 #include <Adafruit_MPU6050.h> 
 #include <Adafruit_BMP085.h>
 #include <TinyGPS++.h>
+#include "FS.h"
+#include "SPIFFS.h"
 #include "sensors.h"
 #include "defs.h"
 #include "state_machine.h"
@@ -16,7 +18,7 @@
  * 1. display_data()
  * 
  */
-int state_leds[5] = {4, 5, 18, 23, LED_BUILTIN};
+int state_leds[1] = {LED_BUILTIN};
 int state;
 State_machine fsm;
 
@@ -35,6 +37,8 @@ Adafruit_BMP085 altimeter;
 /* GPS Setup*/
 HardwareSerial hard(2);
 TinyGPSPlus gps;
+
+File file;
 
 /* position integration variables */
 long long current_time = 0;
@@ -306,14 +310,17 @@ void transmitTelemetry(void* pvParameters){
 
      /*  create two pointers to the data structures to be transmitted */
     
-    char telemetry_data[20];
+    char telemetry_data[180];
     struct Acceleration_Data gyroscope_data_receive;
     struct Altimeter_Data altimeter_data_receive;
     struct GPS_Data gps_data_receive;
     int32_t flight_state_receive;
     int id = 0;
 
-    while(true){    
+    while(true){
+        file = SPIFFS.open("/log.csv", FILE_APPEND);
+        if(!file) debugln("[-] Failed to open file for appending");
+        else debugln("[+] File opened for appending");
         
         /* receive data into respective queues */
         if(xQueueReceive(gyroscope_data_queue, &gyroscope_data_receive, portMAX_DELAY) == pdPASS){
@@ -341,7 +348,7 @@ void transmitTelemetry(void* pvParameters){
         }
 
         sprintf(telemetry_data,
-            "%i,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%i,%.16f,%.16f,%i,%i",
+            "%i,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%i,%.16f,%.16f,%i,%i\n",
             id,//0
             gyroscope_data_receive.ax,//1
             gyroscope_data_receive.ay,//2
@@ -358,6 +365,12 @@ void transmitTelemetry(void* pvParameters){
             gps_data_receive.time,//13
             flight_state_receive//14
         );
+        if(file.print(telemetry_data)){
+            debugln("[+] Message appended");
+        } else {
+            debugln("[-] Append failed");
+        }
+        file.close();
         id+=1;
 
         if(mqtt_client.publish("n3/telemetry", telemetry_data)){
@@ -416,6 +429,9 @@ void setup(){
     /* Setup GPS*/
     hard.begin(9600, SERIAL_8N1, RX, TX);
 
+    //
+    if (!SPIFFS.begin(true)) debugln("[-] An error occurred while mounting SPIFFS");
+    else debugln("[+] SPIFFS mounted successfully");
 
     /* DEBUG: set up state simulation leds */
     for(auto pin: state_leds){
@@ -552,7 +568,7 @@ void setup(){
     if(xTaskCreate(
             transmitTelemetry,
             "transmit_telemetry",
-            STACK_SIZE,
+            STACK_SIZE*2,
             NULL,
             2,
             NULL

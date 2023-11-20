@@ -525,7 +525,7 @@ void setup(){
    if(xTaskCreate(
            readGyroscope,         
            "readGyroscope",
-           STACK_SIZE,                  
+           STACK_SIZE*2,                  
            NULL,                       
            2,
            NULL    

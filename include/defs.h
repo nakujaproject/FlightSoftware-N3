@@ -27,7 +27,7 @@
 /* flight constants */
 #define EJECTION_HEIGHT 1000 // eject at 1000m AGL
 #define SEA_LEVEL_PRESSURE 101325 // Assume the sea level pressure is 101325 Pascals - this can change with weather
-#define ALTITUDE_OFFSET 1415 /* this value is the altitude at rocket launch site */
+#define ALTITUDE_OFFSET 1417 /* this value is the altitude at rocket launch site */
 
 /* tasks constants */
 #define STACK_SIZE 2048
@@ -39,14 +39,14 @@
 #define FLIGHT_STATES_QUEUE_LENGTH 1
 
 /* MQTT constants */
-#define MQTT_SERVER "192.168.100.2"
+#define MQTT_SERVER "192.168.0.105"
 #define MQTT_PORT 1882
 
 /* WIFI credentials */
-const char* SSID = "Nakuja";
-const char* PASSWORD = "987654321";
-// const char* SSID = "Happyhome";
-// const char* PASSWORD = "JMongare@123";
+// const char* SSID = "extended";
+// const char* PASSWORD = "12345678";
+const char* SSID = "Engineering Office ";
+const char* PASSWORD = "theoffice";
 
 /* ROCKET FLIGHT STATES */
 #define PRE_FLIGHT          0
@@ -57,6 +57,7 @@ const char* PASSWORD = "987654321";
 #define PARACHUTE_DESCENT   5
 #define POST_FLIGHT         6
 
+#define EJECTION_PIN 12
 /* LEDs for testing - remove on production */
 #define PRE_FLIGHT_LED 4
 int counter = 0;

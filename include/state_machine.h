@@ -45,6 +45,6 @@ int32_t State_machine::post_flight(){
     return POST_FLIGHT;
 }
 
-
+int checkState(float);
 
 #endif

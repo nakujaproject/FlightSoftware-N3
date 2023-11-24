@@ -180,7 +180,7 @@ void readAltimeter(void* pvParameters){
         current_time = millis();
 
         /* differentiate displacement to get velocity */
-        new_y_displacement = altimeter_data.altitude - ALTITUDE_OFFSET;
+        new_y_displacement = altimeter_data.altitude - BASE_ALTITUDE;
         y_velocity = (new_y_displacement - old_y_displacement) / (current_time - previous_time);
 
         /* update integration variables */
@@ -190,7 +190,7 @@ void readAltimeter(void* pvParameters){
         /* ------------------------ END OF APOGEE DETECTION ALGORITHM ------------------------ */
 
         /* subtract current altitude to get the maximum height reached */
-        float rocket_height = altimeter_data.altitude - ALTITUDE_OFFSET;
+        float rocket_height = altimeter_data.altitude - BASE_ALTITUDE;
 
         /* update altimeter data */
         altimeter_data.velocity = y_velocity;
@@ -414,7 +414,17 @@ void flight_state_check(void* pvParameters){
     while(true){
         if(xQueueReceive(altimeter_data_queue, &altimeter_data_receive, portMAX_DELAY) == pdPASS){
             debugln("[+]Altimeter data in state machine");
-            /*------------- todo: APOGEE DETECTION ALGORITHM -------------------------------------*/
+
+            /*------------- TODO: APOGEE DETECTION ALGORITHM -------------------------------------*/
+            flight_state = checkState(altimeter_data_receive.altitude);
+
+            /*------------- TODO: DEPLOY PARACHUTE ALGORITHM -------------------------------------*/
+            if(flight_state>=APOGEE && flight_state<=PARACHUTE_DESCENT) {
+                pinMode(EJECTION_PIN,HIGH);
+                delay(5000);
+            }
+            else pinMode(EJECTION_PIN,LOW);
+
         }else{
             debugln("[-]Failed to receive altimeter data in state machine");
         }
@@ -607,6 +617,11 @@ void setup(){
 }
 
 void loop(){
+    if(WiFi.status() != WL_CONNECTED){
+        WiFi.begin(SSID, PASSWORD);
+        delay(500);
+        debug(".");
+    }
 
    if(!mqtt_client.connected()){
        /* try to reconnect if connection is lost */

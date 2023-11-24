@@ -409,14 +409,14 @@ void testMQTT(void *pvParameters){
 
 void flight_state_check(void* pvParameters){
     /* Set flight state based on sensor values */
-    int32_t flight_state = fsm.pre_flight();
+    int32_t flight_state = PRE_FLIGHT;
     struct Altimeter_Data altimeter_data_receive;
     while(true){
         if(xQueueReceive(altimeter_data_queue, &altimeter_data_receive, portMAX_DELAY) == pdPASS){
             debugln("[+]Altimeter data in state machine");
 
             /*------------- TODO: APOGEE DETECTION ALGORITHM -------------------------------------*/
-            flight_state = checkState(altimeter_data_receive.altitude);
+            flight_state = fsm.checkState(altimeter_data_receive.altitude);
 
             /*------------- TODO: DEPLOY PARACHUTE ALGORITHM -------------------------------------*/
             if(flight_state>=APOGEE && flight_state<=PARACHUTE_DESCENT) {

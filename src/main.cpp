@@ -8,6 +8,7 @@
 #include <TinyGPS++.h>
 #include "FS.h"
 #include "SPIFFS.h"
+#include <SPIMemory.h>
 #include "sensors.h"
 #include "defs.h"
 #include "state_machine.h"
@@ -38,7 +39,9 @@ Adafruit_BMP085 altimeter;
 HardwareSerial hard(2);
 TinyGPSPlus gps;
 
+/* Onboard logging */
 File file;
+SPIFlash flash(SS, &SPI);
 
 /* position integration variables */
 long long current_time = 0;
@@ -57,6 +60,11 @@ double total_y_displacement = 0.0;
 //
 double fallBackLat = -1.0953775626377544;
 double fallBackLong = 37.01223403257954;
+
+// fallback eject timer
+unsigned long TTA = 10000;
+unsigned long timer_offset = 0;
+bool offset_flag = true;
 
 /* functions to initialize sensors */
 void initialize_gyroscope(){
@@ -391,7 +399,6 @@ void reconnect(){
         if(mqtt_client.connect(client_id.c_str())){
             debugln("[+]MQTT connected");
         }
-        // todo: else
     }
 }
 
@@ -415,15 +422,25 @@ void flight_state_check(void* pvParameters){
         if(xQueueReceive(altimeter_data_queue, &altimeter_data_receive, portMAX_DELAY) == pdPASS){
             debugln("[+]Altimeter data in state machine");
 
-            /*------------- TODO: APOGEE DETECTION ALGORITHM -------------------------------------*/
-            flight_state = fsm.checkState(altimeter_data_receive.altitude);
+            /*------------- STATE MACHINE -------------------------------------*/
+            flight_state = fsm.checkState(altimeter_data_receive.altitude, altimeter_data_receive.velocity);
 
-            /*------------- TODO: DEPLOY PARACHUTE ALGORITHM -------------------------------------*/
-            if(flight_state>=APOGEE && flight_state<=PARACHUTE_DESCENT) {
-                pinMode(EJECTION_PIN,HIGH);
-                delay(5000);
+            /*------------- DEPLOY PARACHUTE ALGORITHM -------------------------------------*/
+            if(flight_state>=POWERED_FLIGHT){//start countdown to ejection
+                if(offset_flag){
+                    timer_offset = millis();
+                    offset_flag = false;
+                }
+                if(TTA-(millis()-timer_offset)<0){
+                    pinMode(EJECTION_PIN,HIGH);
+                    delay(5000);
+                }
+                if(flight_state>=APOGEE && flight_state<PARACHUTE_DESCENT) {
+                    pinMode(EJECTION_PIN,HIGH);
+                    delay(5000);
+                }
+                else pinMode(EJECTION_PIN,LOW);
             }
-            else pinMode(EJECTION_PIN,LOW);
 
         }else{
             debugln("[-]Failed to receive altimeter data in state machine");
@@ -442,6 +459,15 @@ void setup(){
     //
     if (!SPIFFS.begin(true)) debugln("[-] An error occurred while mounting SPIFFS");
     else debugln("[+] SPIFFS mounted successfully");
+
+    //setup flash memory
+    if (!flash.begin()) debugln("[-] An error occurred while mounting flash");
+    else{
+        debug("[+] Flash mounted successfully ");
+        debugln(((String)flash.getCapacity() + " bytes" ));
+
+        flash.eraseChip();
+    }
 
     /* DEBUG: set up state simulation leds */
     for(auto pin: state_leds){

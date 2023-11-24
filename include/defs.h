@@ -39,14 +39,14 @@
 #define FLIGHT_STATES_QUEUE_LENGTH 1
 
 /* MQTT constants */
-#define MQTT_SERVER "192.168.246.19"
+#define MQTT_SERVER "192.168.100.9"
 #define MQTT_PORT 1882
 
 /* WIFI credentials */
 // const char* SSID = "extended";
 // const char* PASSWORD = "12345678";
-const char* SSID = "Galaxy";
-const char* PASSWORD = "luwa2131";
+const char* SSID = "ANDRE  .4G ";
+const char* PASSWORD = "Fabian@123";
 
 /* ROCKET FLIGHT STATES */
 #define PRE_FLIGHT          0
@@ -56,6 +56,7 @@ const char* PASSWORD = "luwa2131";
 #define BALLISTIC_DESCENT   4
 #define PARACHUTE_DESCENT   5
 #define POST_FLIGHT         6
+#define UNDEFINED_STATE         7
 
 #define EJECTION_PIN 12
 /* LEDs for testing - remove on production */

@@ -6,10 +6,10 @@
 class State_machine{
 
     public:
-        int32_t checkState(float);
+        int32_t checkState(float, float);
 };
 
-int32_t State_machine::checkState(float){
+int32_t State_machine::checkState(float, float){
     return PRE_FLIGHT;
 }
 

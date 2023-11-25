@@ -1,0 +1,76 @@
+/* Read pressure.
+         * This is the pressure from the sea level.
+         * */
+        struct Altimeter_Data altimeter_data;
+
+        /* Read pressure
+         * This is the pressure from the sea level
+         * */
+        altimeter_data.pressure = 0.0;
+
+        /* Read altitude
+         * This is the altitude from the sea level
+         * */
+        altimeter_data.altitude = 0.0;
+
+        /* approximate velocity from acceleration by integration for apogee detection */
+        current_time = millis();
+
+        /* differentiate displacement to get velocity */
+        new_y_displacement = altimeter_data.altitude - BASE_ALTITUDE;
+        y_velocity = (new_y_displacement - old_y_displacement) / (current_time - previous_time);
+
+        /* update integration variables */
+        previous_time = current_time;
+        old_y_displacement = new_y_displacement;
+
+        /* ------------------------ END OF APOGEE DETECTION ALGORITHM ------------------------ */
+
+        /* subtract current altitude to get the maximum height reached */
+        float rocket_height = altimeter_data.altitude - BASE_ALTITUDE;
+
+        /* update altimeter data */
+        altimeter_data.velocity = y_velocity;
+        altimeter_data.AGL = rocket_height;
+
+        /* send data to altimeter queue */
+        if(xQueueSend(altimeter_data_queue, &altimeter_data, portMAX_DELAY) != pdPASS){
+            debugln("[-]Altimeter queue full");
+        }
+
+// delay(TASK_DELAY);
+
+
+struct Acceleration_Data gyro_data;
+        /* 
+        * Read accelerations on all axes
+         * */
+        gyro_data.ax = a.acceleration.x;
+        gyro_data.ay = a.acceleration.y;
+        gyro_data.az = a.acceleration.z;
+        gyro_data.gx = g.gyro.x;
+        gyro_data.gy = g.gyro.y;
+        gyro_data.gz = g.gyro.z;
+
+        // FILTER THIS READINGS
+
+        /* send data to gyroscope queue */
+        if(xQueueSend(gyroscope_data_queue, &gyro_data, portMAX_DELAY) != pdPASS){
+            debugln("[-]Gyro queue full");
+        }
+
+// delay(TASK_DELAY);
+
+
+/* This function reads GPS data and sends it to the ground station */
+    struct GPS_Data gps_data;
+    ps_data.latitude = gps.location.lat();
+            gps_data.longitude = gps.location.lng();
+            gps_data.time = gps.time.value();
+            fallBackLat = gps_data.latitude;
+            fallBackLong = gps_data.longitude;
+            debugln("[!!] GPS Data Received [!!]");
+            if(xQueueSend(gps_data_queue, &gps_data, portMAX_DELAY) != pdPASS){
+                debugln("[-]GPS queue full");
+            }
+// delay(TASK_DELAY);

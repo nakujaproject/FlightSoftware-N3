@@ -1,15 +1,14 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <WiFi.h>
-#include <PubSubClient.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_MPU6050.h> 
 #include <Adafruit_BMP085.h>
+#include <PubSubClient.h>
 #include <TinyGPS++.h>
 #include "FS.h"
 #include "SPIFFS.h"
 #include <SPIMemory.h>
-#include "sensors.h"
 #include "defs.h"
 #include "state_machine.h"
 
@@ -28,12 +27,6 @@ WiFiClient wifi_client;
 
 /* create MQTT publish-subscribe client */
 PubSubClient mqtt_client(wifi_client);
-
-/* create gyroscope object */
-Adafruit_MPU6050 gyroscope;
-
-/* create altimeter objects */
-Adafruit_BMP085 altimeter;
 
 /* GPS Setup*/
 HardwareSerial hard(2);
@@ -65,32 +58,6 @@ double fallBackLong = 37.01223403257954;
 unsigned long TTA = 10000;
 unsigned long timer_offset = 0;
 bool offset_flag = true;
-
-/* functions to initialize sensors */
-void initialize_gyroscope(){
-    /* attempt to initialize MPU6050 */
-    if(!gyroscope.begin(0x68)){
-        debugln("[-]Gyroscope allocation failed!");
-        // loop forever until found
-        while(true){}
-    }
-
-    debugln("[+]Gyroscope Initialized");
-    gyroscope.setAccelerometerRange(MPU6050_RANGE_8_G);
-    gyroscope.setGyroRange(MPU6050_RANGE_500_DEG);
-    gyroscope.setFilterBandwidth(MPU6050_BAND_5_HZ);
-
-    delay(SETUP_DELAY);
-}
-
-void initialize_altimeter(){
-    if (!altimeter.begin()) {
-        debugln("[-]Could not find a valid altimeter sensor");
-        while (1) {}
-    }
-
-    debugln("[+]Altimeter initialized");
-}
 
 /* data variables */
 /* gyroscope data */
@@ -159,117 +126,6 @@ void connectToWifi(){
     debugln("[+]Network found");debug("[+]My IP address: "); debugln();
     debugln(WiFi.localIP());
     digitalWrite(LED_BUILTIN, LOW);
-}
-
-void initializeMQTTParameters(){
-    /* this functions creates an MQTT client for transmitting telemetry data */;
-    mqtt_client.setServer(MQTT_SERVER, MQTT_PORT);
-}
-
-void readAltimeter(void* pvParameters){
-
-    while(true){
-        /* Read pressure.
-         * This is the pressure from the sea level.
-         * */
-        struct Altimeter_Data altimeter_data;
-
-        /* Read pressure
-         * This is the pressure from the sea level
-         * */
-        altimeter_data.pressure = altimeter.readSealevelPressure();
-
-        /* Read altitude
-         * This is the altitude from the sea level
-         * */
-        altimeter_data.altitude = altimeter.readAltitude(SEA_LEVEL_PRESSURE);
-
-        /* approximate velocity from acceleration by integration for apogee detection */
-        current_time = millis();
-
-        /* differentiate displacement to get velocity */
-        new_y_displacement = altimeter_data.altitude - BASE_ALTITUDE;
-        y_velocity = (new_y_displacement - old_y_displacement) / (current_time - previous_time);
-
-        /* update integration variables */
-        previous_time = current_time;
-        old_y_displacement = new_y_displacement;
-
-        /* ------------------------ END OF APOGEE DETECTION ALGORITHM ------------------------ */
-
-        /* subtract current altitude to get the maximum height reached */
-        float rocket_height = altimeter_data.altitude - BASE_ALTITUDE;
-
-        /* update altimeter data */
-        altimeter_data.velocity = y_velocity;
-        altimeter_data.AGL = rocket_height;
-
-        /* send data to altimeter queue */
-        if(xQueueSend(altimeter_data_queue, &altimeter_data, portMAX_DELAY) != pdPASS){
-            debugln("[-]Altimeter queue full");
-        }
-
-        // delay(TASK_DELAY);
-    }
-}
-
-void readGyroscope(void* pvParameters){
-    
-    while(true){
-        sensors_event_t a, g, temp;
-        gyroscope.getEvent(&a, &g, &temp);
-        
-        struct Acceleration_Data gyro_data;
-        /* 
-        * Read accelerations on all axes
-         * */
-        gyro_data.ax = a.acceleration.x;
-        gyro_data.ay = a.acceleration.y;
-        gyro_data.az = a.acceleration.z;
-        gyro_data.gx = g.gyro.x;
-        gyro_data.gy = g.gyro.y;
-        gyro_data.gz = g.gyro.z;
-
-        // FILTER THIS READINGS
-
-        /* send data to gyroscope queue */
-        if(xQueueSend(gyroscope_data_queue, &gyro_data, portMAX_DELAY) != pdPASS){
-            debugln("[-]Gyro queue full");
-        }
-
-        // delay(TASK_DELAY);
-    }
-}
-
-void readGPS(void* pvParameters){
-    /* This function reads GPS data and sends it to the ground station */
-    struct GPS_Data gps_data;
-    while(true){
-        while (hard.available() > 0)
-        {
-            gps.encode(hard.read());
-        }
-        if (gps.location.isUpdated()){
-            gps_data.latitude = gps.location.lat();
-            gps_data.longitude = gps.location.lng();
-            gps_data.time = gps.time.value();
-            fallBackLat = gps_data.latitude;
-            fallBackLong = gps_data.longitude;
-            debugln("[!!] GPS Data Received [!!]");
-            if(xQueueSend(gps_data_queue, &gps_data, portMAX_DELAY) != pdPASS){
-                debugln("[-]GPS queue full");
-            }
-            // delay(TASK_DELAY);
-        }else{
-            gps_data.latitude = fallBackLat;
-            gps_data.longitude = fallBackLong;
-            gps_data.time = 20230601;
-            if(xQueueSend(gps_data_queue, &gps_data, portMAX_DELAY) != pdPASS){
-                debugln("[-]GPS queue full");
-            }
-            // delay(TASK_DELAY);
-        }
-    }
 }
 
 void displayData(void* pvParameters){
@@ -397,22 +253,11 @@ void reconnect(){
         client_id += String(random(0XFFFF), HEX);
 
         if(mqtt_client.connect(client_id.c_str())){
+            mqtt_client.subscribe("simulation");
             debugln("[+]MQTT connected");
         }
     }
 }
-
-void testMQTT(void *pvParameters){
-    while(true){
-        debugln("Publishing data");
-        if(mqtt_client.publish("n3/telemetry", "Hello from flight!")){
-            debugln("Data sent");
-        }else{
-            debugln("Unable to send data");
-        }
-    }
-}
-
 
 void flight_state_check(void* pvParameters){
     /* Set flight state based on sensor values */
@@ -449,12 +294,58 @@ void flight_state_check(void* pvParameters){
     }
 }
 
+void callback(char* topic, byte* payload, unsigned int length) {
+    struct Altimeter_Data altimeter_data;
+    struct Acceleration_Data gyro_data;
+    struct GPS_Data gps_data;
+    String message;
+    for (unsigned int i = 0; i < length; i++) {
+        message += (char)payload[i];
+    }
+    // Process the message as CSV
+    float data[14];
+    int dataIndex = 0;
+    int start = 0;
+    for (unsigned int i = 0; i < message.length(); i++) {
+        if (message[i] == ',' || i == message.length() - 1) {
+            data[dataIndex++] = message.substring(start, i).toFloat();
+            start = i + 1;
+        }
+    }
+    debugln("[+] NEW Message");
+    //delay asynchronusly for 300ms
+    vTaskDelay(300 / portTICK_PERIOD_MS);
+    //load data onto data structures
+    gyro_data.ax =(double) data[0];
+    gyro_data.ay =(double) data[1];
+    gyro_data.az =(double) data[2];
+    gyro_data.gx =(double) data[3];
+    gyro_data.gy =(double) data[4];
+    gyro_data.gz =(double) data[5];
+    altimeter_data.AGL =(double) data[6];
+    altimeter_data.altitude =(double) data[7];
+    altimeter_data.velocity =(double) data[8];
+    altimeter_data.pressure =(int32_t) data[9];
+    gps_data.latitude =(double) data[10];
+    gps_data.longitude =(double) data[11];
+    gps_data.time =(uint) data[12];
+    /* send data to altimeter queue */
+    if(xQueueSend(altimeter_data_queue, &altimeter_data, portMAX_DELAY) != pdPASS){
+        debugln("[-]Altimeter queue full");
+    }
+    /* send data to gyroscope queue */
+    if(xQueueSend(gyroscope_data_queue, &gyro_data, portMAX_DELAY) != pdPASS){
+        debugln("[-]Gyroscope queue full");
+    }
+    /* send data to gps queue */
+    if(xQueueSend(gps_data_queue, &gps_data, portMAX_DELAY) != pdPASS){
+        debugln("[-]GPS queue full");
+    }
+}
+
 void setup(){
     /* initialize serial */
     Serial.begin(115200);
-
-    /* Setup GPS*/
-    hard.begin(9600, SERIAL_8N1, RX, TX);
 
     //
     if (!SPIFFS.begin(true)) debugln("[-] An error occurred while mounting SPIFFS");
@@ -477,13 +368,10 @@ void setup(){
     /* connect to WiFi*/
     connectToWifi();
 
-    /* initialize sensors */
-    initialize_gyroscope();
-    initialize_altimeter();
-    // todo: initialize flash memory
 
     // mqtt_client.setBufferSize(MQTT_BUFFER_SIZE);
     mqtt_client.setServer(MQTT_SERVER, MQTT_PORT);
+    mqtt_client.setCallback(callback);
 
     debugln("Creating queues...");
 
@@ -541,49 +429,6 @@ void setup(){
      * */
     debugln("Creating tasks...");
 
-    /* TASK 1: READ ALTIMETER DATA */
-   if(xTaskCreate(
-           readAltimeter,               /* function that executes this task*/
-           "readAltimeter",             /* Function name - for debugging */
-           STACK_SIZE,                  /* Stack depth in words */
-           NULL,                        /* parameter to be passed to the task */
-           2,        /* Task priority - in thGYROSCOPEis case 1 */
-           NULL                         /* task handle that can be passed to other tasks to reference the task */
-   ) != pdPASS){
-    // if task creation is not successful
-    debugln("[-]Read-Altimeter task creation failed!");
-
-   }else{
-    debugln("[+]Read-Altimeter task creation success");
-   }
-
-    /* TASK 2: READ GYROSCOPE DATA */
-   if(xTaskCreate(
-           readGyroscope,         
-           "readGyroscope",
-           STACK_SIZE*2,                  
-           NULL,                       
-           2,
-           NULL    
-   ) != pdPASS){
-    debugln("[-]Read-Gyroscope task creation failed!");
-   } else{
-    debugln("[+]Read-Gyroscope task creation success!");
-   }
-
-   /* TASK 2: READ GPS DATA */
-    if(xTaskCreate(
-              readGPS,         
-              "readGPS",
-              STACK_SIZE,                  
-              NULL,                       
-              2,
-              NULL
-        ) != pdPASS){
-        debugln("[-]Read-GPS task creation failed!");
-    } else{
-        debugln("[+]Read-GPS task creation success!");
-    }
 
     /* TASK 3: DISPLAY DATA ON SERIAL MONITOR - FOR DEBUGGING */
     if (DEBUG)
@@ -613,19 +458,6 @@ void setup(){
     }else{
         debugln("[+]Transmit task created success");
     }
-
-    // if(xTaskCreate(
-    //         testMQTT,
-    //         "testMQTT",
-    //         STACK_SIZE,
-    //         NULL,
-    //         1,
-    //         NULL
-    // ) != pdPASS){
-    //     debugln("[-]Test mqtt task failed to create");
-    // }else{
-    //     debugln("[+]Test mqtt task created success");
-    // }
 
     if(xTaskCreate(
             flight_state_check,

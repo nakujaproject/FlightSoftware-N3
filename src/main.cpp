@@ -72,7 +72,11 @@ void initialize_gyroscope(){
     if(!gyroscope.begin(0x68)){
         debugln("[-]Gyroscope allocation failed!");
         // loop forever until found
-        while(true){}
+        while(true){
+            if(gyroscope.begin(0x68)) break;
+            delay(500);
+            debug(".");
+        }
     }
 
     debugln("[+]Gyroscope Initialized");
@@ -86,7 +90,10 @@ void initialize_gyroscope(){
 void initialize_altimeter(){
     if (!altimeter.begin()) {
         debugln("[-]Could not find a valid altimeter sensor");
-        while (1) {}
+        while (1) {
+            // if(altimeter.begin()) break;
+            debug(".");
+        }
     }
 
     debugln("[+]Altimeter initialized");
@@ -461,13 +468,13 @@ void setup(){
     else debugln("[+] SPIFFS mounted successfully");
 
     //setup flash memory
-    if (!flash.begin()) debugln("[-] An error occurred while mounting flash");
-    else{
-        debug("[+] Flash mounted successfully ");
-        debugln(((String)flash.getCapacity() + " bytes" ));
+    // if (!flash.begin()) debugln("[-] An error occurred while mounting flash");
+    // else{
+    //     debug("[+] Flash mounted successfully ");
+    //     debugln(((String)flash.getCapacity() + " bytes" ));
 
-        flash.eraseChip();
-    }
+    //     flash.eraseChip();
+    // }
 
     /* DEBUG: set up state simulation leds */
     for(auto pin: state_leds){
